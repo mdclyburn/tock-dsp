@@ -31,12 +31,13 @@ use rp2040::clocks::{
     SystemAuxiliaryClockSource, SystemClockSource, UsbAuxiliaryClockSource,
 };
 use rp2040::gpio::{GpioFunction, RPGpio, RPGpioPin};
+use rp2040::multicore;
 use rp2040::resets::Peripheral;
 use rp2040::sysinfo;
 use rp2040::timer::RPTimer;
 
+mod aspk;
 mod io;
-
 mod flash_bootloader;
 
 /// Allocate memory for the stack
@@ -142,7 +143,7 @@ pub unsafe extern "C" fn jump_to_bootloader() {
         "
     movs r0, #0
     ldr r1, =(0xe0000000 + 0x0000ed08)
-    str r0, [r1]
+
     ldmia r0!, {{r1, r2}}
     msr msp, r1
     bx r2
@@ -460,6 +461,17 @@ pub unsafe fn main() {
         peripherals.sysinfo.get_revision(),
         platform_type
     );
+
+    debug!("Launching core1...");
+    multicore::launch_core1(
+        &peripherals.sio,
+        aspk::CORE1_VECTORS.as_ptr(),
+        aspk::_estack_core1 as *const u8,
+        (aspk::aspk_main as *const fn()) as *const u8);
+    debug!("Launched core1!");
+    while !peripherals.sio.fifo_valid() {  }
+    debug!("First word: {}", peripherals.sio.read_fifo());
+
     debug!("Initialization complete. Enter main loop");
 
     /// These symbols are defined in the linker script.
