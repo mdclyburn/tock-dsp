@@ -7,6 +7,7 @@ pub mod clocks;
 pub mod gpio;
 pub mod interrupts;
 pub mod multicore;
+pub mod psm;
 pub mod resets;
 pub mod spi;
 pub mod sysinfo;

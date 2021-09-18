@@ -6,8 +6,12 @@
 //! Support for working with the second core is offered by this module.
 
 use crate::gpio::SIO;
+use crate::psm;
 
 use cortexm0p::{nvic, support};
+
+/// Power cycle core1.
+pub unsafe fn reset_core1(
 
 /// Start core1 with a given vector table, stack location, and entry point.
 ///
