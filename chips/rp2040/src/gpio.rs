@@ -668,4 +668,28 @@ impl SIO {
             _ => panic!("SIO CPUID cannot be {}", proc_id),
         }
     }
+
+    /// Read a word from the FIFO.
+    #[inline]
+    pub fn read_fifo(&self) -> u32 {
+        self.registers.fifo_rd.get()
+    }
+
+    /// Write a word to the FIFO, returning the number of words prior to the write.
+    #[inline]
+    pub fn write_fifo(&self, data: u32) {
+        self.registers.fifo_wr.set(data)
+    }
+
+    /// Returns true if data is present in the FIFO.
+    #[inline]
+    pub fn fifo_valid(&self) -> bool {
+        self.registers.fifo_st.read(FIFO_ST::VLD) == 1
+    }
+
+    /// Returns true if there is space for data in the FIFO.
+    #[inline]
+    pub fn fifo_ready(&self) -> bool {
+        self.registers.fifo_st.read(FIFO_ST::RDY) == 1
+    }
 }

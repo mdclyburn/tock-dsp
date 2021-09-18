@@ -16,6 +16,18 @@ pub unsafe fn wfi() {
     asm!("wfi", options(nomem, preserves_flags));
 }
 
+/// WFE instruction.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub unsafe fn wfe() {
+    asm!("sev", options(nomem, preserves_flags));
+}
+
+/// SEV instruction.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub unsafe fn sev() {
+    asm!("sev", options(nomem, preserves_flags));
+}
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub unsafe fn atomic<F, R>(f: F) -> R
 where
