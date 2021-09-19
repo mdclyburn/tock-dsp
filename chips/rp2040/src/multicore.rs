@@ -6,12 +6,9 @@
 //! Support for working with the second core is offered by this module.
 
 use crate::gpio::SIO;
-use crate::psm;
+use crate::psm::PowerOnStateMachine;
 
 use cortexm0p::{nvic, support};
-
-/// Power cycle core1.
-pub unsafe fn reset_core1(
 
 /// Start core1 with a given vector table, stack location, and entry point.
 ///
@@ -20,8 +17,12 @@ pub unsafe fn reset_core1(
 /// provides this data to core1 through the FIFO structure and SEV
 /// instruction to synchronize with core0.
 ///
+/// In case core1 is not already awaiting data from core0,
+/// core1 is forced into reset and then forced out of reset.
+///
 /// This code is adapted from the Pico SDK code.
-pub unsafe fn launch_core1(sio: &SIO,
+pub unsafe fn launch_core1(psm: &PowerOnStateMachine,
+                           sio: &SIO,
                            vector_table_addr: *const usize,
                            stack_pointer: *const u8,
                            entry: *const u8)
@@ -34,6 +35,11 @@ pub unsafe fn launch_core1(sio: &SIO,
                     entry as u32];
 
     nvic::disable_all();
+
+    // Reset core1 and wait for it to signal readiness through the FIFO.
+    psm.reset_core1();
+    while !sio.fifo_valid() {  }
+    let _core1_ready_0 = sio.read_fifo();
 
     // Communicate data to core1.
     // Responses from core1 should always be the data last sent

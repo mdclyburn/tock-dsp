@@ -464,6 +464,7 @@ pub unsafe fn main() {
 
     debug!("Launching core1...");
     multicore::launch_core1(
+        &peripherals.psm,
         &peripherals.sio,
         aspk::CORE1_VECTORS.as_ptr(),
         aspk::_estack_core1 as *const u8,

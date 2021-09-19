@@ -9,6 +9,7 @@ use crate::adc;
 use crate::clocks::Clocks;
 use crate::gpio::{RPPins, SIO};
 use crate::interrupts;
+use crate::psm::PowerOnStateMachine;
 use crate::resets::Resets;
 use crate::spi;
 use crate::sysinfo;
@@ -123,6 +124,7 @@ pub struct Rp2040DefaultPeripherals<'a> {
     pub adc: adc::Adc,
     pub spi0: spi::Spi<'a>,
     pub sysinfo: sysinfo::SysInfo,
+    pub psm: PowerOnStateMachine,
 }
 
 impl<'a> Rp2040DefaultPeripherals<'a> {
@@ -139,6 +141,7 @@ impl<'a> Rp2040DefaultPeripherals<'a> {
             adc: adc::Adc::new(),
             spi0: spi::Spi::new_spi0(),
             sysinfo: sysinfo::SysInfo::new(),
+            psm: PowerOnStateMachine::new(),
         }
     }
 

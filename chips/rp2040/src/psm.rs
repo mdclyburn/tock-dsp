@@ -23,28 +23,77 @@ register_structs! {
     }
 }
 
-register_bitfields! [u32,
+register_bitfields! [
+    u32,
     FRCE_ON [
         PROC1 OFFSET(16) NUMBITS(1) [
             Force = 1,
             Release = 0
         ],
-        PROC0 OFFSET(15) NUMBITS(1) [],
-        SIO OFFSET(14) NUMBITS(1) [],
-        VREG_AND_CHIP_RESET OFFSET(13) NUMBITS(1) [],
-        XIP OFFSET(12) NUMBITS(1) [],
-        SRAM5 OFFSET(11) NUMBITS(1) [],
-        SRAM4 OFFSET(10) NUMBITS(1) [],
-        SRAM3 OFFSET(9) NUMBITS(1) [],
-        SRAM2 OFFSET(8) NUMBITS(1) [],
-        SRAM1 OFFSET(7) NUMBITS(1) [],
-        SRAM0 OFFSET(6) NUMBITS(1) [],
-        ROM OFFSET(5) NUMBITS(1) [],
-        BUSFABRIC OFFSET(4) NUMBITS(1) [],
-        RESETS OFFSET(3) NUMBITS(1) [],
-        CLOCKS OFFSET(2) NUMBITS(1) [],
-        XOSC OFFSET(1) NUMBITS(1) [],
-        ROSC OFFSET(0) NUMBITS(1) []
+        PROC0 OFFSET(15) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SIO OFFSET(14) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        VREG_AND_CHIP_RESET OFFSET(13) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        XIP OFFSET(12) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM5 OFFSET(11) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM4 OFFSET(10) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM3 OFFSET(9) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM2 OFFSET(8) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM1 OFFSET(7) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM0 OFFSET(6) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        ROM OFFSET(5) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        BUSFABRIC OFFSET(4) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        RESETS OFFSET(3) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        CLOCKS OFFSET(2) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        XOSC OFFSET(1) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        ROSC OFFSET(0) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ]
     ],
 
     FRCE_OFF [
@@ -52,62 +101,212 @@ register_bitfields! [u32,
             Force = 1,
             Release = 0
         ],
-        PROC0 OFFSET(15) NUMBITS(1) [],
-        SIO OFFSET(14) NUMBITS(1) [],
-        VREG_AND_CHIP_RESET OFFSET(13) NUMBITS(1) [],
-        XIP OFFSET(12) NUMBITS(1) [],
-        SRAM5 OFFSET(11) NUMBITS(1) [],
-        SRAM4 OFFSET(10) NUMBITS(1) [],
-        SRAM3 OFFSET(9) NUMBITS(1) [],
-        SRAM2 OFFSET(8) NUMBITS(1) [],
-        SRAM1 OFFSET(7) NUMBITS(1) [],
-        SRAM0 OFFSET(6) NUMBITS(1) [],
-        ROM OFFSET(5) NUMBITS(1) [],
-        BUSFABRIC OFFSET(4) NUMBITS(1) [],
-        RESETS OFFSET(3) NUMBITS(1) [],
-        CLOCKS OFFSET(2) NUMBITS(1) [],
-        XOSC OFFSET(1) NUMBITS(1) [],
-        ROSC OFFSET(0) NUMBITS(1) []
+        PROC0 OFFSET(15) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SIO OFFSET(14) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        VREG_AND_CHIP_RESET OFFSET(13) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        XIP OFFSET(12) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM5 OFFSET(11) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM4 OFFSET(10) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM3 OFFSET(9) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM2 OFFSET(8) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM1 OFFSET(7) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM0 OFFSET(6) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        ROM OFFSET(5) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        BUSFABRIC OFFSET(4) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        RESETS OFFSET(3) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        CLOCKS OFFSET(2) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        XOSC OFFSET(1) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        ROSC OFFSET(0) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ]
     ],
 
     WDSEL [
-        PROC1 OFFSET(16) NUMBITS(1) [],
-        PROC0 OFFSET(15) NUMBITS(1) [],
-        SIO OFFSET(14) NUMBITS(1) [],
-        VREG_AND_CHIP_RESET OFFSET(13) NUMBITS(1) [],
-        XIP OFFSET(12) NUMBITS(1) [],
-        SRAM5 OFFSET(11) NUMBITS(1) [],
-        SRAM4 OFFSET(10) NUMBITS(1) [],
-        SRAM3 OFFSET(9) NUMBITS(1) [],
-        SRAM2 OFFSET(8) NUMBITS(1) [],
-        SRAM1 OFFSET(7) NUMBITS(1) [],
-        SRAM0 OFFSET(6) NUMBITS(1) [],
-        ROM OFFSET(5) NUMBITS(1) [],
-        BUSFABRIC OFFSET(4) NUMBITS(1) [],
-        RESETS OFFSET(3) NUMBITS(1) [],
-        CLOCKS OFFSET(2) NUMBITS(1) [],
-        XOSC OFFSET(1) NUMBITS(1) [],
-        ROSC OFFSET(0) NUMBITS(1) []
+        PROC1 OFFSET(16) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        PROC0 OFFSET(15) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SIO OFFSET(14) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        VREG_AND_CHIP_RESET OFFSET(13) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        XIP OFFSET(12) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM5 OFFSET(11) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM4 OFFSET(10) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM3 OFFSET(9) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM2 OFFSET(8) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM1 OFFSET(7) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM0 OFFSET(6) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        ROM OFFSET(5) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        BUSFABRIC OFFSET(4) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        RESETS OFFSET(3) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        CLOCKS OFFSET(2) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        XOSC OFFSET(1) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        ROSC OFFSET(0) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ]
     ],
 
     DONE [
-        PROC1 OFFSET(16) NUMBITS(1) [],
-        PROC0 OFFSET(15) NUMBITS(1) [],
-        SIO OFFSET(14) NUMBITS(1) [],
-        VREG_AND_CHIP_RESET OFFSET(13) NUMBITS(1) [],
-        XIP OFFSET(12) NUMBITS(1) [],
-        SRAM5 OFFSET(11) NUMBITS(1) [],
-        SRAM4 OFFSET(10) NUMBITS(1) [],
-        SRAM3 OFFSET(9) NUMBITS(1) [],
-        SRAM2 OFFSET(8) NUMBITS(1) [],
-        SRAM1 OFFSET(7) NUMBITS(1) [],
-        SRAM0 OFFSET(6) NUMBITS(1) [],
-        ROM OFFSET(5) NUMBITS(1) [],
-        BUSFABRIC OFFSET(4) NUMBITS(1) [],
-        RESETS OFFSET(3) NUMBITS(1) [],
-        CLOCKS OFFSET(2) NUMBITS(1) [],
-        XOSC OFFSET(1) NUMBITS(1) [],
-        ROSC OFFSET(0) NUMBITS(1) []
+        PROC1 OFFSET(16) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        PROC0 OFFSET(15) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SIO OFFSET(14) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        VREG_AND_CHIP_RESET OFFSET(13) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        XIP OFFSET(12) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM5 OFFSET(11) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM4 OFFSET(10) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM3 OFFSET(9) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM2 OFFSET(8) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM1 OFFSET(7) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        SRAM0 OFFSET(6) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        ROM OFFSET(5) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        BUSFABRIC OFFSET(4) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        RESETS OFFSET(3) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        CLOCKS OFFSET(2) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        XOSC OFFSET(1) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ],
+        ROSC OFFSET(0) NUMBITS(1) [
+            Force = 1,
+            Release = 0
+        ]
     ],
 ];
 
@@ -121,7 +320,7 @@ pub struct PowerOnStateMachine {
 }
 
 impl PowerOnStateMachine {
-    pub fn new() -> PowerOnStateMachine {
+    pub const fn new() -> PowerOnStateMachine {
         PowerOnStateMachine {
             registers: PSM,
         }
@@ -131,7 +330,7 @@ impl PowerOnStateMachine {
     #[inline]
     pub fn reset_core1(&self) {
         self.registers.force_off.modify(FRCE_OFF::PROC1::Force);
-        while self.registers.done.read(DONE::PROC1) != 1 {  }
+        while self.registers.force_off.read(FRCE_OFF::PROC1) != 1 {  }
         self.registers.force_off.modify(FRCE_OFF::PROC1::Release);
     }
 }
