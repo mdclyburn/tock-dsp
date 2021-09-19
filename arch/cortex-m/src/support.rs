@@ -59,6 +59,18 @@ pub unsafe fn wfi() {
 }
 
 #[cfg(not(any(target_arch = "arm", target_os = "none")))]
+/// WFE instruction (mock)
+pub unsafe fn wfe() {
+    unimplemented!()
+}
+
+#[cfg(not(any(target_arch = "arm", target_os = "none")))]
+/// SEV instruction (mock)
+pub unsafe fn sev() {
+    unimplemented!()
+}
+
+#[cfg(not(any(target_arch = "arm", target_os = "none")))]
 pub unsafe fn atomic<F, R>(_f: F) -> R
 where
     F: FnOnce() -> R,
