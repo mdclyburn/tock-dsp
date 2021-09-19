@@ -19,7 +19,7 @@ pub unsafe fn wfi() {
 /// WFE instruction.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub unsafe fn wfe() {
-    asm!("sev", options(nomem, preserves_flags));
+    asm!("wfe", options(nomem, preserves_flags));
 }
 
 /// SEV instruction.
