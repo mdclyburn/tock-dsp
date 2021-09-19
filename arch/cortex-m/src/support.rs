@@ -18,12 +18,14 @@ pub unsafe fn wfi() {
 
 /// WFE instruction.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+#[inline(always)]
 pub unsafe fn wfe() {
     asm!("wfe", options(nomem, preserves_flags));
 }
 
 /// SEV instruction.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+#[inline(always)]
 pub unsafe fn sev() {
     asm!("sev", options(nomem, preserves_flags));
 }
