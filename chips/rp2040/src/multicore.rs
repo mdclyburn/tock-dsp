@@ -23,9 +23,9 @@ use cortexm0p::support;
 /// This code is adapted from the Pico SDK code.
 pub unsafe fn launch_core1(psm: &PowerOnStateMachine,
                            sio: &SIO,
-                           vector_table_addr: *const usize,
-                           stack_pointer: *const u8,
-                           entry: *const u8)
+                           vector_table_addr: usize,
+                           stack_pointer: usize,
+                           entry: usize)
 {
     let commands = [0u32,
                     0u32,

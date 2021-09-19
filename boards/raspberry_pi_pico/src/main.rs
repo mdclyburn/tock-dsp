@@ -340,14 +340,17 @@ pub unsafe fn main() {
             // Used for serial communication. Comment them in if you don't use serial.
             // 0 => &peripherals.pins.get_pin(RPGpio::GPIO0),
             // 1 => &peripherals.pins.get_pin(RPGpio::GPIO1),
-            2 => &peripherals.pins.get_pin(RPGpio::GPIO2),
-            3 => &peripherals.pins.get_pin(RPGpio::GPIO3),
+            // 2 => &peripherals.pins.get_pin(RPGpio::GPIO2),
+            // 3 => &peripherals.pins.get_pin(RPGpio::GPIO3),
             4 => &peripherals.pins.get_pin(RPGpio::GPIO4),
             5 => &peripherals.pins.get_pin(RPGpio::GPIO5),
             6 => &peripherals.pins.get_pin(RPGpio::GPIO6),
             7 => &peripherals.pins.get_pin(RPGpio::GPIO7),
-            8 => &peripherals.pins.get_pin(RPGpio::GPIO8),
-            9 => &peripherals.pins.get_pin(RPGpio::GPIO9),
+
+            // UART1
+            // 8 => &peripherals.pins.get_pin(RPGpio::GPIO8),
+            // 9 => &peripherals.pins.get_pin(RPGpio::GPIO9),
+
             10 => &peripherals.pins.get_pin(RPGpio::GPIO10),
             11 => &peripherals.pins.get_pin(RPGpio::GPIO11),
             12 => &peripherals.pins.get_pin(RPGpio::GPIO12),
@@ -462,18 +465,25 @@ pub unsafe fn main() {
         platform_type
     );
 
-    debug!("Launching core1...");
-    aspk::CORE1_VECTORS[0] = (aspk::aspk_main as *const fn()) as usize;
-    multicore::launch_core1(
-        &peripherals.psm,
-        &peripherals.sio,
-        aspk::CORE1_VECTORS.as_ptr(),
-        aspk::_core1_estack as *const u8,
-        (aspk::aspk_main as *const fn()) as *const u8);
+    debug!("Initializing peripherals for handoff to core1.");
+
+    // UART for core1: 8 = UART1 TX, 9 = UART1 RX.
+    // peripherals.gpio.get_pin(RPGpio::GPIO0).set_function(GpioFunction::UART);
+    // peripherals.gpio.get_pin(RPGpio::GPIO9).set_function(GpioFunction::UART);
+
+    let (core1_vectors, core1_sp, core1_entry) =
+        (aspk::CORE1_VECTORS.as_ptr() as usize,
+         (&aspk::_core1_estack as *const u8) as usize,
+         (aspk::aspk_main as *const fn()) as usize);
+    aspk::CORE1_VECTORS[0] = core1_entry; // May be useful to know later.
+    debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
+           core1_vectors, core1_sp, core1_entry);
+    multicore::launch_core1(&peripherals.psm, &peripherals.sio,
+                            core1_vectors, core1_sp, core1_entry);
     debug!("Launched core1!");
 
     while !peripherals.sio.fifo_valid() {  }
-    debug!("First word: {}", peripherals.sio.read_fifo());
+    debug!("First word: {:#X}", peripherals.sio.read_fifo());
 
     debug!("Initialization complete. Enter main loop");
 

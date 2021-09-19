@@ -6,11 +6,11 @@ use rp2040;
 // Slightly reduced for vector and IRQs, aligned to 256 bytes.
 #[no_mangle]
 #[link_section = ".core1_stack_buffer"]
-pub static mut CORE1_STACK_MEMORY: [u8; 0x800] = [0; 0x800];
+pub static mut CORE1_STACK_MEMORY: [u8; 0x1000 - 256] = [0; 0x1000 - 256];
 
 extern "C" {
-    static _core1_sstack: u32;
-    pub static _core1_estack: u32;
+    pub static _core1_sstack: u8;
+    pub static _core1_estack: u8;
 }
 
 #[used]

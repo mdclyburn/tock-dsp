@@ -32,8 +32,10 @@ INCLUDE ../kernel_layout.ld
 SECTIONS {
   .core1_support (NOLOAD) :
   {
+    . = ALIGN(8);
     _core1_sstack = .;
     KEEP(*(.core1_stack_buffer));
+    . = ALIGN(8);
     _core1_estack = .;
 
     . = ALIGN (256);
