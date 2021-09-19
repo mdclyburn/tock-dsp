@@ -8,7 +8,7 @@
 use crate::gpio::SIO;
 use crate::psm::PowerOnStateMachine;
 
-use cortexm0p::{nvic, support};
+use cortexm0p::support;
 
 /// Start core1 with a given vector table, stack location, and entry point.
 ///
@@ -34,42 +34,40 @@ pub unsafe fn launch_core1(psm: &PowerOnStateMachine,
                     stack_pointer as u32,
                     entry as u32];
 
-    nvic::disable_all();
+    support::atomic(|| {
+        // Reset core1 and wait for it to signal readiness through the FIFO.
+        psm.reset_core1();
+        while !sio.fifo_valid() {  }
+        let _core1_ready_0 = sio.read_fifo();
 
-    // Reset core1 and wait for it to signal readiness through the FIFO.
-    psm.reset_core1();
-    while !sio.fifo_valid() {  }
-    let _core1_ready_0 = sio.read_fifo();
-
-    // Communicate data to core1.
-    // Responses from core1 should always be the data last sent
-    // from core0 through the FIFO. Otherwise, the two cores are
-    // not in sync. Sending 0s causes core1's launch state machine
-    // to restart.
-    let mut seq = 0;
-    while seq < commands.len() {
-        let command = commands[seq];
-        if command == 0 {
-            // Drain the FIFO.
-            while sio.fifo_valid() {
-                let _ = sio.read_fifo();
+        // Communicate data to core1.
+        // Responses from core1 should always be the data last sent
+        // from core0 through the FIFO. Otherwise, the two cores are
+        // not in sync. Sending 0s causes core1's launch state machine
+        // to restart.
+        let mut seq = 0;
+        while seq < commands.len() {
+            let command = commands[seq];
+            if command == 0 {
+                // Drain the FIFO.
+                while sio.fifo_valid() {
+                    let _ = sio.read_fifo();
+                }
+                support::sev();
             }
+
+            while !sio.fifo_ready() {  }
+            sio.write_fifo(command);
             support::sev();
+
+            while !sio.fifo_valid() { support::wfe(); }
+
+            // Incorrect response; restart launch.
+            if sio.read_fifo() != command {
+                seq = 0;
+            } else {
+                seq += 1;
+            }
         }
-
-        while !sio.fifo_ready() {  }
-        sio.write_fifo(command);
-        support::sev();
-
-        while !sio.fifo_valid() { support::wfe(); }
-
-        // Incorrect response; restart launch.
-        if sio.read_fifo() != command {
-            seq = 0;
-        } else {
-            seq += 1;
-        }
-    }
-
-    nvic::enable_all();
+    });
 }
