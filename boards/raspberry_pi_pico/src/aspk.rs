@@ -15,27 +15,7 @@ extern "C" {
 
 #[used]
 #[link_section = ".core1_vectors"]
-pub static mut CORE1_VECTORS: [usize; 16] = [
-    // Reset value for the main stack pointer.
-    // This is not important for core1 since it WFEs on reset.
-    0x0000_0000,
-
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-];
+pub static mut CORE1_VECTORS: [usize; 16] = [0x0000_0000; 16];
 
 #[used]
 #[link_section = ".core1_irqs"]
