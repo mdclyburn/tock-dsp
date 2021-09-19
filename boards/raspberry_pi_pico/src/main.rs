@@ -463,13 +463,15 @@ pub unsafe fn main() {
     );
 
     debug!("Launching core1...");
+    aspk::CORE1_VECTORS[0] = (aspk::aspk_main as *const fn()) as usize;
     multicore::launch_core1(
         &peripherals.psm,
         &peripherals.sio,
         aspk::CORE1_VECTORS.as_ptr(),
-        aspk::_estack_core1 as *const u8,
+        aspk::_core1_estack as *const u8,
         (aspk::aspk_main as *const fn()) as *const u8);
     debug!("Launched core1!");
+
     while !peripherals.sio.fifo_valid() {  }
     debug!("First word: {}", peripherals.sio.read_fifo());
 

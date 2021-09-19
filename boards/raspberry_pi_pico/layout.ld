@@ -9,7 +9,8 @@ MEMORY
   /* boot from Flash */
   rom (rx)  : ORIGIN = 0x10000000, LENGTH = 128K
   prog (rx) : ORIGIN = 0x10020000, LENGTH = 256K
-  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 264K
+  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 260K
+  core1_ram (rwx) : ORIGIN = 0x20041000, LENGTH = 4K
 }
 
 MPU_MIN_ALIGN = 8K;
@@ -23,7 +24,21 @@ SECTIONS {
     {
         KEEP (*(.flash_bootloader));
         . = ALIGN (256);
-    } > rom 
+    } > rom
 }
 
 INCLUDE ../kernel_layout.ld
+
+SECTIONS {
+  .core1_support (NOLOAD) :
+  {
+    _core1_sstack = .;
+    KEEP(*(.core1_stack_buffer));
+    _core1_estack = .;
+
+    . = ALIGN (256);
+
+    KEEP(*(.core1_vectors));
+    KEEP(*(.core1_irqs));
+  } > core1_ram
+}
