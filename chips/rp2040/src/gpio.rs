@@ -3,8 +3,10 @@
 //! ### Author
 //! * Ioana Culic <ioana.culic@wyliodrin.com>
 
+use cortexm0p::nvic::Nvic;
 use enum_primitive::cast::FromPrimitive;
 use enum_primitive::enum_from_primitive;
+use kernel::debug;
 use kernel::hil;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -12,6 +14,8 @@ use kernel::utilities::registers::{register_bitfields, register_structs, ReadOnl
 use kernel::utilities::StaticRef;
 
 use crate::chip::Processor;
+use crate::interrupts::{SIO_IRQ_PROC0, SIO_IRQ_PROC1};
+
 #[repr(C)]
 struct GpioPin {
     status: ReadOnly<u32, GPIOx_STATUS::Register>,
@@ -643,12 +647,23 @@ impl SIO {
         }
     }
 
+    pub fn enable_interrupt(&self) {
+        let index = match self.get_processor() {
+            Processor::Processor0 => SIO_IRQ_PROC0,
+            Processor::Processor1 => SIO_IRQ_PROC1,
+            _ => panic!("Unexpected CPUID value."),
+        };
+
+        unsafe { Nvic::new(index) }.enable();
+    }
+
     pub fn handle_proc_interrupt(&self, for_processor: Processor) {
         match for_processor {
             Processor::Processor0 => {
                 // read data from the fifo
                 self.registers.fifo_rd.get();
-                self.registers.fifo_st.set(0xff);
+                while self.fifo_valid() { debug!("core1 sent: {:#X}", self.read_fifo()); }
+                // self.registers.fifo_st.set(0xff);
             }
             Processor::Processor1 => {
                 if self.registers.cpuid.get() == 1 {

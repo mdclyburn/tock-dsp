@@ -465,7 +465,7 @@ pub unsafe fn main() {
         platform_type
     );
 
-    debug!("Initializing peripherals for handoff to core1.");
+    // debug!("Initializing peripherals for handoff to core1.");
 
     // UART for core1: 8 = UART1 TX, 9 = UART1 RX.
     // peripherals.gpio.get_pin(RPGpio::GPIO0).set_function(GpioFunction::UART);
@@ -478,12 +478,10 @@ pub unsafe fn main() {
     aspk::CORE1_VECTORS[0] = core1_entry; // May be useful to know later.
     debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
            core1_vectors, core1_sp, core1_entry);
+    peripherals.sio.enable_interrupt();
     multicore::launch_core1(&peripherals.psm, &peripherals.sio,
                             core1_vectors, core1_sp, core1_entry);
     debug!("Launched core1!");
-
-    while !peripherals.sio.fifo_valid() {  }
-    debug!("First word: {:#X}", peripherals.sio.read_fifo());
 
     debug!("Initialization complete. Enter main loop");
 
