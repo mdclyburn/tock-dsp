@@ -1,7 +1,6 @@
 //! Interfaces for implementing microcontrollers in Tock.
 
 use crate::platform::mpu;
-use crate::platform::sync::HardwareSync;
 use crate::syscall;
 use core::fmt::Write;
 
@@ -65,8 +64,6 @@ pub trait Chip {
     /// the Display trait.
     /// Used by panic.
     unsafe fn print_state(&self, writer: &mut dyn Write);
-
-    fn hardware_sync(&self) -> Option<&dyn HardwareSync> { None }
 }
 
 /// Interface for handling interrupts and deferred calls on a hardware chip.
