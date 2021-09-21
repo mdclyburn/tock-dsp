@@ -663,7 +663,6 @@ impl SIO {
         let index = match self.get_processor() {
             Processor::Processor0 => SIO_IRQ_PROC0,
             Processor::Processor1 => SIO_IRQ_PROC1,
-            _ => panic!("Unexpected CPUID value."),
         };
 
         unsafe { Nvic::new(index) }.enable();
