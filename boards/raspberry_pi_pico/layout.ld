@@ -30,6 +30,13 @@ SECTIONS {
 INCLUDE ../kernel_layout.ld
 
 SECTIONS {
+  .multicore (NOLOAD) :
+  {
+    . = ALIGN(4);
+    KEEP(*(.hardware_sync));
+    . = ALIGN(4);
+  } >ram
+
   .core1_support (NOLOAD) :
   {
     . = ALIGN(8);
@@ -42,5 +49,5 @@ SECTIONS {
 
     KEEP(*(.core1_vectors));
     KEEP(*(.core1_irqs));
-  } > core1_ram
+  } >core1_ram
 }

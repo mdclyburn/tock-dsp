@@ -39,6 +39,7 @@ use rp2040::timer::RPTimer;
 mod aspk;
 mod io;
 mod flash_bootloader;
+mod sync;
 
 /// Allocate memory for the stack
 #[no_mangle]
