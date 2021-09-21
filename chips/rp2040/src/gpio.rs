@@ -100,8 +100,14 @@ register_structs! {
         /// FIFO read
         (0x058 => fifo_rd: ReadOnly<u32, FIFO_RD::Register>),
 
+        /// Hardware spinlock state
+        (0x05c => spinlock_st: ReadOnly<u32, SPINLOCK_ST::Register>),
+
+        /// Hardware spinlock
+        (0x100 => spinlock: [ReadWrite<u32, SPINLOCK::Register>; 32]),
+
         /// End
-        (0x05c => @END),
+        (0x180 => @END),
     }
 }
 
@@ -277,6 +283,12 @@ register_bitfields![u32,
         /// FIFO Read
         VALUE OFFSET(0) NUMBITS(32)
     ],
+    SPINLOCK_ST [
+        STATE OFFSET(0) NUMBITS(32)
+    ],
+    SPINLOCK [
+        STATE OFFSET(0) NUMBITS(32)
+    ]
 ];
 
 const GPIO_BASE_ADDRESS: usize = 0x40014000;
@@ -706,5 +718,27 @@ impl SIO {
     #[inline]
     pub fn fifo_ready(&self) -> bool {
         self.registers.fifo_st.read(FIFO_ST::RDY) == 1
+    }
+
+    /// Attempt to claim a spinlock.
+    ///
+    /// This operation will return true if claiming the spinlock succeeded.
+    #[inline]
+    pub fn claim_spinlock(&self, lock_no: u8) -> bool {
+        if lock_no < 32 {
+            self.registers.spinlock[lock_no as usize]
+                .read(SPINLOCK::STATE) != 0
+        } else {
+            false
+        }
+    }
+
+    /// Release a spinlock.
+    #[inline]
+    pub fn release_spinlock(&self, lock_no: u8) {
+        if lock_no < 32 {
+            self.registers.spinlock[lock_no as usize]
+                .set(0xffff_ffff)
+        }
     }
 }
