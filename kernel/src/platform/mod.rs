@@ -5,6 +5,7 @@
 pub mod chip;
 pub mod mpu;
 pub mod scheduler_timer;
+pub mod sync;
 pub mod watchdog;
 
 pub(crate) mod platform;
