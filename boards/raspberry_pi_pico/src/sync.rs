@@ -67,8 +67,16 @@ impl HardwareSyncBlock {
     /// # Safety
     /// This function is unsafe because it initializes global mutable state.
     /// It should only be called once during the startup sequence.
+    ///
+    /// It is not clear what happens to the spinlock claim state if a core is reset.
+    /// Here, we write to all spinlocks to attempt to unlock them if they are locked.
     unsafe fn initialize(&'static mut self) {
-        for (i, s) in (0..).zip(&mut self.spinlocks) { s.0 = i }
+        let sio = SIO::new();
+        for (i, s) in (0..).zip(&mut self.spinlocks) {
+            s.0 = i;
+            // Try to release the spinlock of this is not from clean start.
+            sio.release_spinlock(i);
+        }
 
         let initial_allocation_state: u32 = 1 << HSB_SPINLOCK_NO;
         self.allocation_state = Cell::new(initial_allocation_state);
