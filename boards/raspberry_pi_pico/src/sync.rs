@@ -59,7 +59,6 @@ const HSB_SPINLOCK_NO: u8 = 0;
 pub struct HardwareSyncBlock {
     spinlocks: [SIOSpinlock; 32],
     allocation_state: Cell<u32>,
-    sio: SIO,
 }
 
 impl HardwareSyncBlock {
@@ -73,7 +72,6 @@ impl HardwareSyncBlock {
 
         let initial_allocation_state: u32 = 1 << HSB_SPINLOCK_NO;
         self.allocation_state = Cell::new(initial_allocation_state);
-        self.sio = SIO::new();
     }
 
     /// Returns a bitmap representing the spinlocks that are allocated to consuming code.
