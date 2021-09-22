@@ -8,6 +8,7 @@ use rp2040::gpio::SIO;
 use kernel::errorcode::ErrorCode;
 use kernel::platform::sync::{
     HardwareSync,
+    HardwareSpinlock,
     Spinlock,
 };
 
@@ -30,7 +31,7 @@ impl SIOSpinlock {
     fn spinlock_no(&self) -> u8 { self.0 }
 }
 
-impl Spinlock for SIOSpinlock {
+impl HardwareSpinlock for SIOSpinlock {
     fn try_claim(&self) -> bool {
         let sio = SIO::new();
         sio.claim_spinlock(self.spinlock_no())
@@ -102,7 +103,7 @@ impl HardwareSyncBlock {
 }
 
 impl<'a> HardwareSync<'a> for HardwareSyncBlock {
-    fn get_spinlock(&'a self) -> Result<&'a dyn Spinlock, ErrorCode> {
+    fn get_spinlock(&'a self) -> Result<Spinlock<'a>, ErrorCode> {
         let current_state = self.allocation_state.get();
 
         // Iterate through the bits until we find a free one.
@@ -111,7 +112,7 @@ impl<'a> HardwareSync<'a> for HardwareSyncBlock {
             let mask = 1u32 << i;
             if (mask & current_state) == 0 {
                 self.allocate(i);
-                return Ok(&self.spinlocks[i as usize]);
+                return Ok(Spinlock::new(&self.spinlocks[i as usize]));
             }
         }
 
