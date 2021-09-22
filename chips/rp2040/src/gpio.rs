@@ -10,7 +10,7 @@ use kernel::debug;
 use kernel::hil;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
-use kernel::utilities::registers::{register_bitfields, register_structs, ReadOnly, ReadWrite};
+use kernel::utilities::registers::{register_bitfields, register_structs, ReadOnly, ReadWrite, WriteOnly};
 use kernel::utilities::StaticRef;
 
 use crate::chip::Processor;
@@ -103,6 +103,126 @@ register_structs! {
         /// Hardware spinlock state
         (0x05c => spinlock_st: ReadOnly<u32, SPINLOCK_ST::Register>),
 
+        /// Divider unsigned dividend
+        (0x060 => div_udividend: WriteOnly<u32, DIV_UDIVIDEND::Register>),
+
+        /// Divider unsigned divisor
+        (0x064 => div_udivisor: WriteOnly<u32, DIV_UDIVISOR::Register>),
+
+        /// Divider signed dividend
+        (0x068 => div_sdividend: WriteOnly<u32, DIV_SDIVIDEND::Register>),
+
+        /// Divider signed divisor
+        (0x06c => div_sdivisor: WriteOnly<u32, DIV_SDIVISOR::Register>),
+
+        /// Divider result quotient
+        (0x070 => div_quotient: ReadOnly<u32, DIV_QUOTIENT::Register>),
+
+        /// Divider result remainder
+        (0x074 => div_remainder: ReadOnly<u32, DIV_REMAINDER::Register>),
+
+        /// Control and status register for divider
+        (0x078 => div_csr: ReadWrite<u32, DIV_CSR::Register>),
+
+        /// Easy-to-miss gap...
+        (0x07c => _reserved3),
+
+        /// Read/write access to accumulator 0
+        (0x080 => interp0_accum0: ReadWrite<u32, INTERP0_ACCUM0::Register>),
+
+        /// Read/write access to accumulator 1
+        (0x084 => interp0_accum1: ReadWrite<u32, INTERP0_ACCUM1::Register>),
+
+        /// Read/write access to BASE0 register
+        (0x088 => interp0_base0: ReadWrite<u32, INTERP0_BASE0::Register>),
+
+        /// Read/write access to BASE1 register
+        (0x08c => interp0_base1: ReadWrite<u32, INTERP0_BASE1::Register>),
+
+        /// Read/write access to BASE2 register
+        (0x090 => interp0_base2: ReadWrite<u32, INTERP0_BASE2::Register>),
+
+        /// Read LANE0 result and simultaneously write lane results to both accumulators (POP)
+        (0x094 => interp0_pop_lane0: ReadOnly<u32, INTERP0_POP_LANE0::Register>),
+
+        /// Read LANE1 result and simultaneously write lane results to both accumulators (POP)
+        (0x098 => interp0_pop_lane1: ReadOnly<u32, INTERP0_POP_LANE1::Register>),
+
+        /// Read FULL result and simultaneously write lane results to both accumulators (POP)
+        (0x09c => interp0_pop_full: ReadOnly<u32, INTERP0_POP_FULL::Register>),
+
+        /// Read LANE0 result without altering any internal state (PEEK)
+        (0x0a0 => interp0_peek_lane0: ReadOnly<u32, INTERP0_PEEK_LANE0::Register>),
+
+        /// Read LANE1 result without altering any internal state (PEEK)
+        (0x0a4 => interp0_peek_lane1: ReadOnly<u32, INTERP0_PEEK_LANE1::Register>),
+
+        /// Read FULL result without altering any internal state (PEEK)
+        (0x0a8 => interp0_peek_full: ReadOnly<u32, INTERP0_PEEK_FULL::Register>),
+
+        /// Control register for lane 0
+        (0x0ac => interp0_ctrl_lane0: ReadOnly<u32, INTERP0_CTRL_LANE0::Register>),
+
+        /// Control register for lane 1
+        (0x0b0 => interp0_ctrl_lane1: ReadOnly<u32, INTERP0_CTRL_LANE1::Register>),
+
+        /// Values written here are atomically added to ACCUM0
+        (0x0b4 => interp0_accum0_add: ReadWrite<u32, INTERP0_ACCUM0_ADD::Register>),
+
+        /// Values written here are atomically added to ACCUM1
+        (0x0b8 => interp0_accum1_add: ReadWrite<u32, INTERP0_ACCUM1_ADD::Register>),
+
+        /// On write, the lower 16 bits go to BASE0, upper bits to BASE1 simultaneously
+        (0x0bc => interp0_base_1and0: WriteOnly<u32, INTERP0_BASE_1AND0::Register>),
+
+        /// Read/write access to accumulator 0
+        (0x0c0 => interp1_accum0: ReadWrite<u32, INTERP1_ACCUM0::Register>),
+
+        /// Read/write access to accumulator 1
+        (0x0c4 => interp1_accum1: ReadWrite<u32, INTERP1_ACCUM1::Register>),
+
+        /// Read/write access to BASE0 register
+        (0x0c8 => interp1_base0: ReadWrite<u32, INTERP1_BASE0::Register>),
+
+        /// Read/write access to BASE1 register
+        (0x0cc => interp1_base1: ReadWrite<u32, INTERP1_BASE1::Register>),
+
+        /// Read/write access to BASE2 register
+        (0x0d0 => interp1_base2: ReadWrite<u32, INTERP1_BASE2::Register>),
+
+        /// Read LANE0 result and simultaneously write lane results to both accumulators (POP)
+        (0x0d4 => interp1_pop_lane0: ReadOnly<u32, INTERP1_POP_LANE0::Register>),
+
+        /// Read LANE1 result and simultaneously write lane results to both accumulators (POP)
+        (0x0d8 => interp1_pop_lane1: ReadOnly<u32, INTERP1_POP_LANE1::Register>),
+
+        /// Read FULL result and simultaneously write lane results to both accumulators (POP)
+        (0x0dc => interp1_pop_full: ReadOnly<u32, INTERP1_POP_FULL::Register>),
+
+        /// Read LANE0 result without altering any internal state (PEEK)
+        (0x0e0 => interp1_peek_lane0: ReadOnly<u32, INTERP1_PEEK_LANE0::Register>),
+
+        /// Read LANE1 result without altering any internal state (PEEK)
+        (0x0e4 => interp1_peek_lane1: ReadOnly<u32, INTERP1_PEEK_LANE1::Register>),
+
+        /// Read FULL result without altering any internal state (PEEK)
+        (0x0e8 => interp1_peek_full: ReadOnly<u32, INTERP1_PEEK_FULL::Register>),
+
+        /// Control register for lane 0
+        (0x0ec => interp1_ctrl_lane0: ReadOnly<u32, INTERP1_CTRL_LANE0::Register>),
+
+        /// Control register for lane 1
+        (0x0f0 => interp1_ctrl_lane1: ReadOnly<u32, INTERP1_CTRL_LANE1::Register>),
+
+        /// Values written here are atomically added to ACCUM0
+        (0x0f4 => interp1_accum0_add: ReadWrite<u32, INTERP1_ACCUM0_ADD::Register>),
+
+        /// Values written here are atomically added to ACCUM1
+        (0x0f8 => interp1_accum1_add: ReadWrite<u32, INTERP1_ACCUM1_ADD::Register>),
+
+        /// On write, the lower 16 bits go to BASE0, upper bits to BASE1 simultaneously
+        (0x0fc => interp1_base_1and0: WriteOnly<u32, INTERP1_BASE_1AND0::Register>),
+
         /// Hardware spinlock
         (0x100 => spinlock: [ReadWrite<u32, SPINLOCK::Register>; 32]),
 
@@ -111,7 +231,8 @@ register_structs! {
     }
 }
 
-register_bitfields![u32,
+register_bitfields![
+    u32,
     GPIOx_STATUS [
         /// interrupt to processors, after override is applied
         IRQTOPROC OFFSET(26) NUMBITS(1) [],
@@ -286,6 +407,199 @@ register_bitfields![u32,
     SPINLOCK_ST [
         STATE OFFSET(0) NUMBITS(32)
     ],
+
+    DIV_UDIVIDEND [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    DIV_UDIVISOR [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    DIV_SDIVIDEND [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    DIV_SDIVISOR [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    DIV_QUOTIENT [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    DIV_REMAINDER [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    DIV_CSR [
+        DIRTY OFFSET(1) NUMBITS(1),
+        READY OFFSET(0) NUMBITS(1)
+    ],
+
+    INTERP0_ACCUM0 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_ACCUM1 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_BASE0 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_BASE1 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_BASE2 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_POP_LANE0 [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_POP_LANE1 [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_POP_FULL [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_PEEK_LANE0 [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_PEEK_LANE1 [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_PEEK_FULL [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP0_CTRL_LANE0 [
+        OVERF OFFSET(25) NUMBITS(1),
+        OVERF1 OFFSET(24) NUMBITS(1),
+        OVERF0 OFFSET(23) NUMBITS(1),
+        CLAMP OFFSET(22) NUMBITS(1),
+        FORCE_MSB OFFSET(19) NUMBITS(2),
+        ADD_RAW OFFSET(18) NUMBITS(1),
+        CROSS_RESULT OFFSET(17) NUMBITS(1),
+        CROSS_INPUT OFFSET(16) NUMBITS(1),
+        SIGNED OFFSET(15) NUMBITS(1),
+        MASK_MSB OFFSET(10) NUMBITS(5),
+        MASK_LSB OFFSET(5) NUMBITS(5),
+        SHIFT OFFSET(0) NUMBITS(5)
+    ],
+
+    INTERP0_CTRL_LANE1 [
+        FORCE_MSB OFFSET(19) NUMBITS(2),
+        ADD_RAW OFFSET(18) NUMBITS(1),
+        CROSS_RESULT OFFSET(17) NUMBITS(1),
+        CROSS_INPUT OFFSET(16) NUMBITS(1),
+        SIGNED OFFSET(15) NUMBITS(1),
+        MASK_MSB OFFSET(10) NUMBITS(5),
+        MASK_LSB OFFSET(5) NUMBITS(5),
+        SHIFT OFFSET(0) NUMBITS(5)
+    ],
+
+    INTERP0_ACCUM0_ADD [
+        VALUE OFFSET(0) NUMBITS(24)
+    ],
+
+    INTERP0_ACCUM1_ADD [
+        VALUE OFFSET(0) NUMBITS(24)
+    ],
+
+    INTERP0_BASE_1AND0 [
+        BASE1_BASE0 OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_ACCUM0 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_ACCUM1 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_BASE0 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_BASE1 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_BASE2 [
+        VALUE OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_POP_LANE0 [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_POP_LANE1 [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+    INTERP1_POP_FULL [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_PEEK_LANE0 [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_PEEK_LANE1 [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_PEEK_FULL [
+        RESULT OFFSET(0) NUMBITS(32)
+    ],
+
+    INTERP1_CTRL_LANE0 [
+        OVERF OFFSET(25) NUMBITS(1),
+        OVERF1 OFFSET(24) NUMBITS(1),
+        OVERF0 OFFSET(23) NUMBITS(1),
+        CLAMP OFFSET(22) NUMBITS(1),
+        FORCE_MSB OFFSET(19) NUMBITS(2),
+        ADD_RAW OFFSET(18) NUMBITS(1),
+        CROSS_RESULT OFFSET(17) NUMBITS(1),
+        CROSS_INPUT OFFSET(16) NUMBITS(1),
+        SIGNED OFFSET(15) NUMBITS(1),
+        MASK_MSB OFFSET(10) NUMBITS(5),
+        MASK_LSB OFFSET(5) NUMBITS(5),
+        SHIFT OFFSET(0) NUMBITS(5)
+    ],
+
+    INTERP1_CTRL_LANE1 [
+        FORCE_MSB OFFSET(19) NUMBITS(2),
+        ADD_RAW OFFSET(18) NUMBITS(1),
+        CROSS_RESULT OFFSET(17) NUMBITS(1),
+        CROSS_INPUT OFFSET(16) NUMBITS(1),
+        SIGNED OFFSET(15) NUMBITS(1),
+        MASK_MSB OFFSET(10) NUMBITS(5),
+        MASK_LSB OFFSET(5) NUMBITS(5),
+        SHIFT OFFSET(0) NUMBITS(5)
+    ],
+
+    INTERP1_ACCUM0_ADD [
+        VALUE OFFSET(0) NUMBITS(24)
+    ],
+
+    INTERP1_ACCUM1_ADD [
+        VALUE OFFSET(0) NUMBITS(24)
+    ],
+
+    INTERP1_BASE_1AND0 [
+        BASE1_BASE0 OFFSET(0) NUMBITS(32)
+    ],
+
     SPINLOCK [
         STATE OFFSET(0) NUMBITS(32)
     ]
@@ -722,7 +1036,7 @@ impl SIO {
     /// Attempt to claim a spinlock.
     ///
     /// This operation will return true if claiming the spinlock succeeded.
-    #[inline]
+    #[inline(never)]
     pub fn claim_spinlock(&self, lock_no: u8) -> bool {
         if lock_no < 32 {
             self.registers.spinlock[lock_no as usize]
@@ -739,5 +1053,10 @@ impl SIO {
             self.registers.spinlock[lock_no as usize]
                 .set(0xffff_ffff)
         }
+    }
+
+    /// Retrieve spinlock states.
+    pub fn spinlock_state(&self) -> u32 {
+        self.registers.spinlock_st.get()
     }
 }
