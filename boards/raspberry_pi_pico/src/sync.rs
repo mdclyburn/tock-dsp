@@ -95,7 +95,7 @@ impl HardwareSyncBlock {
 
     /// Make a spinlock available for allocation.
     fn deallocate(&self, lock_no: u8) {
-        let new_state = self.allocation_state.get() ^ !(1 << lock_no);
+        let new_state = self.allocation_state.get() ^ (1 << lock_no);
         self.allocation_state.set(new_state);
     }
 }
