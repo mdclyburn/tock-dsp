@@ -1,4 +1,4 @@
-//! Runtime synchronization
+//! Runtime synchronization for the RP2040
 
 use core::cell::Cell;
 use core::mem::MaybeUninit;
@@ -11,9 +11,11 @@ use kernel::platform::sync::{
     Spinlock,
 };
 
+/// Hardware synchronization metadata.
 #[used]
 #[link_section = ".hardware_sync"]
 static mut HARDWARE_SYNC_BLOCK: MaybeUninit<HardwareSyncBlock> = MaybeUninit::uninit();
+/// Initialized single instance of the `HardwareSyncBlock`.
 static mut INSTANCE: Option<&HardwareSyncBlock> = None;
 
 /// Spinlock implementated atop a hardware spinlock.
@@ -23,6 +25,7 @@ static mut INSTANCE: Option<&HardwareSyncBlock> = None;
 struct SIOSpinlock(u8);
 
 impl SIOSpinlock {
+    /// Returns the index of the associated hardware spinlock.
     #[inline(always)]
     fn spinlock_no(&self) -> u8 { self.0 }
 }
@@ -44,6 +47,7 @@ impl Spinlock for SIOSpinlock {
 }
 
 // Use the first spinlock to mediate HSB access.
+/// Hardware spinlock that module-internal code uses to make accessing the HSB safe.
 const HSB_SPINLOCK_NO: u8 = 0;
 
 /// Hardware-backed synchronization support.
@@ -58,6 +62,11 @@ pub struct HardwareSyncBlock {
 }
 
 impl HardwareSyncBlock {
+    /// Initialize the tracking state of hardware synchronization.
+    ///
+    /// # Safety
+    /// This function is unsafe because it initializes global mutable state.
+    /// It should only be called once during the startup sequence.
     unsafe fn initialize(&'static mut self) {
         for (i, s) in (0..).zip(&mut self.spinlocks) { s.0 = i }
 
@@ -66,15 +75,26 @@ impl HardwareSyncBlock {
         self.sio = SIO::new();
     }
 
+    /// Returns a bitmap representing the spinlocks that are allocated to consuming code.
+    ///
+    /// The position of the bit indicates the spinlock number.
+    /// A 0 means that no code is making use of the spinlock,
+    /// and a 1 means that code is making use of the spinlock
+    /// (e.g., `0b00010000` would mean code has allocated spinlock #4 for use).
+    /// This is distinct from locking state.
+    ///
+    /// Note that at least one spinlock will always appear allocated as one is required to synchronize access to the `HardwareSyncBlock`.
     pub fn allocation_state(&self) -> u32 {
         self.allocation_state.get()
     }
 
+    /// Allocate a spinlock for use.
     fn allocate(&self, lock_no: u8) {
         let new_state = self.allocation_state.get() | (1 << lock_no);
         self.allocation_state.set(new_state);
     }
 
+    /// Make a spinlock available for allocation.
     fn deallocate(&self, lock_no: u8) {
         let new_state = self.allocation_state.get() ^ !(1 << lock_no);
         self.allocation_state.set(new_state);
@@ -100,6 +120,10 @@ impl<'a> HardwareSync<'a> for HardwareSyncBlock {
 }
 
 /// Perform initialization of the HSB.
+///
+/// # Safety
+/// This function is unsafe because it initializes global mutable state.
+/// It should only be called once during the startup sequence.
 ///
 /// # Panics
 /// - When called more than once.
