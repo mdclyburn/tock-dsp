@@ -982,6 +982,16 @@ impl SIO {
         unsafe { Nvic::new(index) }.enable();
     }
 
+    pub fn disable_interrupt(&self) {
+        use Processor::*;
+        let index = match self.get_processor() {
+            Processor0 => SIO_IRQ_PROC0,
+            Processor1 => SIO_IRQ_PROC1,
+        };
+
+        unsafe { Nvic::new(index) }.enable();
+    }
+
     pub fn handle_proc_interrupt(&self, for_processor: Processor) {
         match for_processor {
             Processor::Processor0 => {
