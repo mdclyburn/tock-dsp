@@ -109,8 +109,8 @@ impl HardwareSyncBlock {
     }
 }
 
-impl<'a> HardwareSync<'a> for HardwareSyncBlock {
-    fn get_spinlock(&'a self) -> Result<Spinlock<'a>, ErrorCode> {
+impl HardwareSync for HardwareSyncBlock {
+    fn get_spinlock(&'static self) -> Result<Spinlock, ErrorCode> {
         let current_state = self.allocation_state.get();
 
         // Iterate through the bits until we find a free one.

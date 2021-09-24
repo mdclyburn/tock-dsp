@@ -50,13 +50,13 @@ pub trait HardwareSpinlock {
 /// Instead, [`HardwareSpinlock::free`] is called once `Spinlock` falls out of scope.
 ///
 /// See [`HardwareSpinlock`] for a detailed description of how to use the spinlock implementation.
-pub struct Spinlock<'a> {
-    hw_spinlock: &'a dyn HardwareSpinlock,
+pub struct Spinlock {
+    hw_spinlock: &'static dyn HardwareSpinlock,
 }
 
-impl<'a> Spinlock<'a> {
+impl Spinlock {
     /// Wrap a `HardwareSpinlock` in a new `Spinlock`.
-    pub fn new(hw_spinlock: &'a dyn HardwareSpinlock) -> Spinlock<'a> {
+    pub fn new(hw_spinlock: &'static dyn HardwareSpinlock) -> Spinlock {
         Spinlock {
             hw_spinlock,
         }
@@ -78,18 +78,18 @@ impl<'a> Spinlock<'a> {
     }
 }
 
-impl<'a> Drop for Spinlock<'a> {
+impl Drop for Spinlock {
     fn drop(&mut self) {
         self.hw_spinlock.free();
     }
 }
 
 /// Hardware supporting synchronization-related operations.
-pub trait HardwareSync<'a> {
+pub trait HardwareSync {
     /// Allocate a hardware-based spinlock.
     ///
     /// Returns an `Ok(Spinlock)` on success.
     /// Returns an `Err(ErrorCode)` on failure.
     /// Failure most likely means that hardware resources backing `Spinlock`s are exhausted at the time of the call.
-    fn get_spinlock(&'a self) -> Result<Spinlock<'a>, ErrorCode>;
+    fn get_spinlock(&'static self) -> Result<Spinlock, ErrorCode>;
 }
