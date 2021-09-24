@@ -6,7 +6,6 @@
 use cortexm0p::nvic::Nvic;
 use enum_primitive::cast::FromPrimitive;
 use enum_primitive::enum_from_primitive;
-use kernel::debug;
 use kernel::hil;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -997,8 +996,8 @@ impl SIO {
             Processor::Processor0 => {
                 // read data from the fifo
                 self.registers.fifo_rd.get();
-                while self.fifo_valid() { debug!("core1 sent: {:#X}", self.read_fifo()); }
-                // self.registers.fifo_st.set(0xff);
+                while self.fifo_valid() { let _ = self.read_fifo(); }
+                self.registers.fifo_st.set(0xff);
             }
             Processor::Processor1 => {
                 if self.registers.cpuid.get() == 1 {
@@ -1046,7 +1045,6 @@ impl SIO {
     /// Attempt to claim a spinlock.
     ///
     /// This operation will return true if claiming the spinlock succeeded.
-    #[inline(never)]
     pub fn claim_spinlock(&self, lock_no: u8) -> bool {
         if lock_no < 32 {
             self.registers.spinlock[lock_no as usize]
@@ -1057,7 +1055,6 @@ impl SIO {
     }
 
     /// Release a spinlock.
-    #[inline]
     pub fn release_spinlock(&self, lock_no: u8) {
         if lock_no < 32 {
             self.registers.spinlock[lock_no as usize]
