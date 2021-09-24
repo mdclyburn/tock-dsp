@@ -3,6 +3,7 @@
 use core::cell::Cell;
 use core::mem::MaybeUninit;
 
+use cortexm0p::support;
 use rp2040::gpio::SIO;
 
 use kernel::errorcode::ErrorCode;
@@ -162,7 +163,11 @@ where
 
     let r = unsafe {
         match INSTANCE {
-            Some(hsb) => f(hsb),
+            Some(hsb) => {
+                // Do not hang other accesses to the hardware sync interface with
+                // unexpected calls to service interrupts.
+                support::atomic(|| f(hsb))
+            },
             None => panic!("Cannot use HSB before it has been initialized!"),
         }
     };
