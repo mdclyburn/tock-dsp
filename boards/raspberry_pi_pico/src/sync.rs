@@ -1,11 +1,11 @@
 //! Runtime synchronization for the RP2040
 
 use core::cell::Cell;
-use core::mem::MaybeUninit;
 
 use cortexm0p::support;
 use rp2040::gpio::SIO;
 
+use kernel::static_init;
 use kernel::errorcode::ErrorCode;
 use kernel::platform::sync::{
     HardwareSync,
@@ -14,23 +14,36 @@ use kernel::platform::sync::{
     Spinlock,
 };
 
-/// Hardware synchronization metadata.
-#[used]
-#[link_section = ".hardware_sync"]
-static mut HARDWARE_SYNC_BLOCK: MaybeUninit<HardwareSyncBlock> = MaybeUninit::uninit();
-/// Initialized single instance of the `HardwareSyncBlock`.
-static mut INSTANCE: Option<&HardwareSyncBlock> = None;
+/// Reference to the single instance of the hardware synchronization state.
+///
+/// Instance of the synchronization state used by `SIOSpinlock` to deallocate on Drop with minimal memory overhead.
+static mut INSTANCE: Option<&'static HardwareSyncBlock> = None;
 
 /// Spinlock implementated atop a hardware spinlock.
 ///
 /// Each instance of SIOSpinlock represents exclusive access to one of the RP2040's
 /// hardware spinlocks.
+#[derive(Copy, Clone)]
 struct SIOSpinlock(u8);
 
 impl SIOSpinlock {
     /// Returns the index of the associated hardware spinlock.
     #[inline(always)]
     fn spinlock_no(&self) -> u8 { self.0 }
+
+    /// Creates new spinlock states and tries to ensure they are in an unlocked state.
+    unsafe fn enumerated() -> [SIOSpinlock; 32] {
+        let sio = SIO::new();
+        let mut spinlocks = [SIOSpinlock(0); 32];
+        let mut idx = 0;
+        while idx < spinlocks.len() {
+            sio.release_spinlock(idx as u8);
+            spinlocks[idx].0 = idx as u8;
+            idx += 1;
+        }
+
+        spinlocks
+    }
 }
 
 impl HardwareSpinlock for SIOSpinlock {
@@ -45,7 +58,10 @@ impl HardwareSpinlock for SIOSpinlock {
     }
 
     fn free(&self) {
-        with_hsb(|hsb| hsb.deallocate(self.spinlock_no()));
+        // Call to free() implies SIOSpinlock was previously created by HardwareSyncBlock,
+        // which implies that HardwareSyncBlock was previously created by HardwareSyncBlockAccess,
+        // which implies that the instance exists.
+        unsafe { INSTANCE.unwrap() }.deallocate(self.spinlock_no());
     }
 }
 
@@ -64,24 +80,23 @@ pub struct HardwareSyncBlock {
 }
 
 impl HardwareSyncBlock {
-    /// Initialize the tracking state of hardware synchronization.
+    /// Create hardware synchronization tracking state.
+    ///
+    /// Code should not normally call this function.
+    /// Instead, use [`HardwareSyncBlockAccess`] to gain access hardware synchronization resources.
     ///
     /// # Safety
-    /// This function is unsafe because it initializes global mutable state.
-    /// It should only be called once during the startup sequence.
-    ///
-    /// It is not clear what happens to the spinlock claim state if a core is reset.
-    /// Here, we write to all spinlocks to attempt to unlock them if they are locked.
-    unsafe fn initialize(&'static mut self) {
-        let sio = SIO::new();
-        for (i, s) in (0..).zip(&mut self.spinlocks) {
-            s.0 = i;
-            // Try to release the spinlock of this is not from clean start.
-            sio.release_spinlock(i);
-        }
+    /// This function is unsafe because it tracks the state of hardware for which there is a single instance.
+    /// Not only does creating this type with `new()` affect the hardware state (within [`SIOSpinlock::new()`],
+    /// but manipulating the hardware state with a second instance (or third, fourth...) will create inconsistencies that will result in unpredictable behavior.
+    unsafe fn new() -> HardwareSyncBlock {
+        let initial_allocation_state = 1 << HSB_SPINLOCK_NO;
+        let hsb = HardwareSyncBlock {
+            spinlocks: SIOSpinlock::enumerated(),
+            allocation_state: Cell::new(initial_allocation_state),
+        };
 
-        let initial_allocation_state: u32 = 1 << HSB_SPINLOCK_NO;
-        self.allocation_state = Cell::new(initial_allocation_state);
+        hsb
     }
 
     /// Returns a bitmap representing the spinlocks that are allocated to consuming code.
@@ -138,13 +153,31 @@ impl HardwareSync for HardwareSyncBlock {
 }
 
 /// Accessor for [`HardwareSyncBlock`].
-pub struct HardwareSyncBlockAccess;
+///
+/// Gateway to accessing to the [`HardwareSyncBlock`] instance.
+/// On creation of the first instance, `HardwareSyncBlockAccess` will initialize the global hardware synchronization state.
+/// Calls thereafter will only create a new instance of this (lightweight) type.
+pub struct HardwareSyncBlockAccess { _private: () }
+
+impl HardwareSyncBlockAccess {
+    /// Create a new instance.
+    ///
+    /// # Safety
+    /// Because the first call to this function will initialize the global synchronization state,
+    /// the first call should be placed carefully in code.
+    pub unsafe fn new() -> HardwareSyncBlockAccess {
+        if INSTANCE.is_none() {
+            let new_instance: &'static _ = static_init!(HardwareSyncBlock, HardwareSyncBlock::new());
+            INSTANCE = Some(new_instance);
+        } else {
+            INSTANCE.unwrap();
+        }
+
+        HardwareSyncBlockAccess { _private: () }
+    }
+}
 
 impl HardwareSyncAccess for HardwareSyncBlockAccess {
-    unsafe fn initialize(&self) {
-        initialize_hsb();
-    }
-
     fn access<F, T>(&self, block: bool, f: F) -> Result<T, ErrorCode>
     where
         F: FnOnce(&'static dyn HardwareSync) -> T
@@ -154,10 +187,10 @@ impl HardwareSyncAccess for HardwareSyncBlockAccess {
             // Try at least once for the first try...
             if sio.claim_spinlock(HSB_SPINLOCK_NO) {
                 let result = unsafe {
-                    let r = match INSTANCE {
-                        Some(hsb) => Ok(support::atomic(|| f(hsb))),
-                        None => Err(ErrorCode::FAIL),
-                    };
+                    // Call to access() implies prior call to new(),
+                    // prior call to new() implies instance exists.
+                    let hsb = INSTANCE.unwrap();
+                    let r = Ok(support::atomic(|| f(hsb)));
                     sio.release_spinlock(HSB_SPINLOCK_NO);
                     r
                 };
@@ -170,58 +203,4 @@ impl HardwareSyncAccess for HardwareSyncBlockAccess {
             // ... but if we're not blocking on this, then we just retry.
         }
     }
-}
-
-/// Perform initialization of the HSB.
-///
-/// TODO: This function is a stop-gap at the moment.
-/// Ideally, the kernel will initialize this area of memory once
-/// and the module will not export this function for external code to accidentally call...
-///
-/// # Safety
-/// This function is unsafe because it initializes global mutable state.
-/// It should only be called once during the startup sequence.
-///
-/// # Panics
-/// - When called more than once.
-unsafe fn initialize_hsb() {
-    if INSTANCE.is_some() {
-        panic!("Attempted to initialize HSB more than once.");
-    }
-
-    (*HARDWARE_SYNC_BLOCK.as_mut_ptr()).initialize();
-    INSTANCE = HARDWARE_SYNC_BLOCK.as_ptr().as_ref();
-}
-
-/// Raw access to the hardware synchronization interface.
-///
-/// Obtains access to the [`HardwareSyncBlock`] (or waits until it can do so)
-/// and allows use of it by the provided closure.
-///
-/// # Panics
-/// - When [`initialize_hsb`] has not previously been called.
-fn with_hsb<F, T>(f: F) -> T
-where
-    F: FnOnce(&'static HardwareSyncBlock) -> T
-{
-    // Because the HSB is unavailable until we can claim it, we need to
-    // use raw access to the hardware spinlock to try to claim the lock
-    // set aside for HSB access.
-    let sio = SIO::new();
-    while !sio.claim_spinlock(HSB_SPINLOCK_NO) {  }
-
-    let r = unsafe {
-        match INSTANCE {
-            Some(hsb) => {
-                // Do not hang other accesses to the hardware sync interface with
-                // unexpected calls to service interrupts.
-                support::atomic(|| f(hsb))
-            },
-            None => panic!("Cannot use HSB before it has been initialized!"),
-        }
-    };
-
-    sio.release_spinlock(HSB_SPINLOCK_NO);
-
-    r
 }

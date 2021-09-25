@@ -105,13 +105,6 @@ pub trait HardwareSync {
 /// Provides safe access to the hardware synchronization interface,
 /// which may itself require locking to use.
 pub trait HardwareSyncAccess {
-    /// Perform one-time initialization of the hardware synchronization data.
-    ///
-    /// If a system exposes hardware synchronization interfaces,
-    /// board setup should make a call to this initialization function early during execution
-    /// and certainly before running the kernel.
-    unsafe fn initialize(&self);
-
     /// Provide access to the `HardwareSync` implementation.
     ///
     /// Locks access to hardware synchronization data and runs `f`,
@@ -120,7 +113,6 @@ pub trait HardwareSyncAccess {
     /// # Returns
     /// - Result of the function `f` if HardwareSync was available.
     /// - `ErrorCode::BUSY` if `block` is false and `HardwareSync` was unavailable.
-    /// - `ErrorCode::FAIL` if required initialization was not performed before the call to this function.
     /// - `ErrorCode::NODEVICE` if the functionality is not present.
     fn access<F, T>(&self, block: bool, f: F) -> Result<T, ErrorCode>
     where
@@ -129,9 +121,6 @@ pub trait HardwareSyncAccess {
 
 /// Implementation for hardware not supporting any kind of hardware synchronization.
 impl HardwareSyncAccess for () {
-    /// Does nothing.
-    unsafe fn initialize(&self) {  }
-
     /// Always returns `ErrorCode::NODEVICE`.
     fn access<F, T>(&self, _block: bool, _f: F) -> Result<T, ErrorCode>
     where
