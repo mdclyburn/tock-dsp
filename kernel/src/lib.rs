@@ -108,6 +108,7 @@ pub mod platform;
 pub mod process;
 pub mod processbuffer;
 pub mod scheduler;
+pub mod sync;
 pub mod syscall;
 pub mod upcall;
 pub mod utilities;
