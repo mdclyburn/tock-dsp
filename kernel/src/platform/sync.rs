@@ -120,7 +120,19 @@ pub trait HardwareSyncAccess {
     /// # Returns
     /// - Result of the function `f` if HardwareSync was available.
     /// - `ErrorCode::BUSY` if `block` is false and `HardwareSync` was unavailable.
+    /// - `ErrorCode::NODEVICE` if the functionality is not present.
     fn access<F, T>(&self, block: bool, f: F) -> Result<T, ErrorCode>
     where
         F: FnOnce(&'static dyn HardwareSync) -> T;
+}
+
+impl HardwareSyncAccess for () {
+    unsafe fn initialize(&self) {  }
+
+    fn access<F, T>(&self, _block: bool, _f: F) -> Result<T, ErrorCode>
+    where
+        F: FnOnce(&'static dyn HardwareSync) -> T
+    {
+        Err(ErrorCode::NODEVICE)
+    }
 }

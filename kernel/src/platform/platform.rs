@@ -44,7 +44,7 @@ pub trait KernelResources<C: Chip> {
     ///
     /// This is different from the actual implementation of the hardware sync
     /// interface. See [`sync::HardwareSyncAccess`] for details.
-    type HardwareSyncAccess: sync::HardwareSyncAccess;
+    type HardwareSyncAccess: sync::HardwareSyncAccess = ();
 
     /// Returns a reference to the implementation of the SyscallDriverLookup this
     /// platform will use to route syscalls.
