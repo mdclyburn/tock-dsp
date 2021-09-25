@@ -9,6 +9,7 @@ use rp2040::gpio::SIO;
 use kernel::errorcode::ErrorCode;
 use kernel::platform::sync::{
     HardwareSync,
+    HardwareSyncAccess,
     HardwareSpinlock,
     Spinlock,
 };
@@ -127,7 +128,46 @@ impl HardwareSync for HardwareSyncBlock {
     }
 }
 
+/// Accessor for [`HardwareSyncBlock`].
+pub struct HardwareSyncBlockAccess;
+
+impl HardwareSyncAccess for HardwareSyncBlockAccess {
+    unsafe fn initialize(&self) {
+        initialize_hsb();
+    }
+
+    fn access<F, T>(&self, block: bool, f: F) -> Result<T, ErrorCode>
+    where
+        F: FnOnce(&'static dyn HardwareSync) -> T
+    {
+        let sio = SIO::new();
+        loop {
+            // Try at least once for the first try...
+            if sio.claim_spinlock(HSB_SPINLOCK_NO) {
+                let result = unsafe {
+                    let r = match INSTANCE {
+                        Some(hsb) => Ok(support::atomic(|| f(hsb))),
+                        None => Err(ErrorCode::FAIL),
+                    };
+                    sio.release_spinlock(HSB_SPINLOCK_NO);
+                    r
+                };
+                return result;
+            } else if !block {
+                // ... and if we're not blocking to get access and we failed,
+                // we return with a BUSY code here...
+                return Err(ErrorCode::BUSY);
+            }
+            // ... but if we're not blocking on this, then we just retry.
+        }
+    }
+}
+
 /// Perform initialization of the HSB.
+///
+/// TODO: This function is a stop-gap at the moment.
+/// Ideally, the kernel will initialize this area of memory once
+/// and the module will not export this function for external code to accidentally call...
 ///
 /// # Safety
 /// This function is unsafe because it initializes global mutable state.
@@ -144,7 +184,7 @@ pub unsafe fn initialize_hsb() {
     INSTANCE = HARDWARE_SYNC_BLOCK.as_ptr().as_ref();
 }
 
-/// Returns the hardware synchronization interface.
+/// Raw access to the hardware synchronization interface.
 ///
 /// Obtains access to the [`HardwareSyncBlock`] (or waits until it can do so)
 /// and allows use of it by the provided closure.

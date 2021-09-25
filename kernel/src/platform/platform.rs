@@ -8,6 +8,7 @@ use crate::syscall_driver::SyscallDriver;
 
 use crate::platform::chip::Chip;
 use crate::platform::scheduler_timer;
+use crate::platform::sync;
 use crate::platform::watchdog;
 
 /// Combination trait that boards provide to the kernel that includes all of
@@ -38,6 +39,13 @@ pub trait KernelResources<C: Chip> {
     /// of the kernel.
     type WatchDog: watchdog::WatchDog;
 
+    /// The implementation of hardware synchronization that provides
+    /// access to hardware-backed synchronization resources.
+    ///
+    /// This is different from the actual implementation of the hardware sync
+    /// interface. See [`sync::HardwareSyncAccess`] for details.
+    type HardwareSyncAccess: sync::HardwareSyncAccess;
+
     /// Returns a reference to the implementation of the SyscallDriverLookup this
     /// platform will use to route syscalls.
     fn syscall_driver_lookup(&self) -> &Self::SyscallDriverLookup;
@@ -61,6 +69,9 @@ pub trait KernelResources<C: Chip> {
     /// Returns a reference to the implementation of the WatchDog on this
     /// platform.
     fn watchdog(&self) -> &Self::WatchDog;
+
+    /// Returns an optional reference to the implementation of hardware synchronization for the platform.
+    fn hardware_sync(&self) -> Option<&Self::HardwareSyncAccess> { None }
 }
 
 /// Configure the system call dispatch mapping.

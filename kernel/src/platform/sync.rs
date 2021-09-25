@@ -93,3 +93,28 @@ pub trait HardwareSync {
     /// Failure most likely means that hardware resources backing `Spinlock`s are exhausted at the time of the call.
     fn get_spinlock(&'static self) -> Result<Spinlock, ErrorCode>;
 }
+
+/// Accessor for the [`HardwareSync`] interface.
+///
+/// Provides safe access to the hardware synchronization interface,
+/// which may itself require locking to use.
+pub trait HardwareSyncAccess {
+    /// Perform one-time initialization of the hardware synchronization data.
+    ///
+    /// If a system exposes hardware synchronization interfaces,
+    /// board setup should make a call to this initialization function early during execution
+    /// and certainly before running the kernel.
+    unsafe fn initialize(&self);
+
+    /// Provide access to the `HardwareSync` implementation.
+    ///
+    /// Locks access to hardware synchronization data and runs `f`,
+    /// returning the result of `f` in a `Result::Ok`.
+    ///
+    /// # Returns
+    /// - Result of the function `f` if HardwareSync was available.
+    /// - `ErrorCode::BUSY` if `block` is false and `HardwareSync` was unavailable.
+    fn access<F, T>(&self, block: bool, f: F) -> Result<T, ErrorCode>
+    where
+        F: FnOnce(&'static dyn HardwareSync) -> T;
+}
