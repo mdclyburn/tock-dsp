@@ -120,15 +120,19 @@ pub trait HardwareSyncAccess {
     /// # Returns
     /// - Result of the function `f` if HardwareSync was available.
     /// - `ErrorCode::BUSY` if `block` is false and `HardwareSync` was unavailable.
+    /// - `ErrorCode::FAIL` if required initialization was not performed before the call to this function.
     /// - `ErrorCode::NODEVICE` if the functionality is not present.
     fn access<F, T>(&self, block: bool, f: F) -> Result<T, ErrorCode>
     where
         F: FnOnce(&'static dyn HardwareSync) -> T;
 }
 
+/// Implementation for hardware not supporting any kind of hardware synchronization.
 impl HardwareSyncAccess for () {
+    /// Does nothing.
     unsafe fn initialize(&self) {  }
 
+    /// Always returns `ErrorCode::NODEVICE`.
     fn access<F, T>(&self, _block: bool, _f: F) -> Result<T, ErrorCode>
     where
         F: FnOnce(&'static dyn HardwareSync) -> T

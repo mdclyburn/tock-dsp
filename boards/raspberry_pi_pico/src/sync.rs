@@ -129,6 +129,9 @@ impl HardwareSync for HardwareSyncBlock {
 
     fn spinlocks_supported(&'static self) -> usize { 32 }
 
+    /// Returns the number of spinlocks that code has allocated.
+    ///
+    /// There will always be at least one spinlock allocated as one is used to synchronize access to the `HardwareSyncBlock`.
     fn spinlocks_allocated(&'static self) -> usize {
         self.allocation_state.get().count_ones() as usize
     }
