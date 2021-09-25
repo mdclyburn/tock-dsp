@@ -175,7 +175,7 @@ impl HardwareSyncAccess for HardwareSyncBlockAccess {
 ///
 /// # Panics
 /// - When called more than once.
-pub unsafe fn initialize_hsb() {
+unsafe fn initialize_hsb() {
     if INSTANCE.is_some() {
         panic!("Attempted to initialize HSB more than once.");
     }
