@@ -87,7 +87,7 @@ impl HardwareSyncBlock {
     ///
     /// # Safety
     /// This function is unsafe because it tracks the state of hardware for which there is a single instance.
-    /// Not only does creating this type with `new()` affect the hardware state (within [`SIOSpinlock::new()`],
+    /// Not only does creating this type with `new()` affect the hardware state (within [`SIOSpinlock::enumerated()`],
     /// but manipulating the hardware state with a second instance (or third, fourth...) will create inconsistencies that will result in unpredictable behavior.
     unsafe fn new() -> HardwareSyncBlock {
         let initial_allocation_state = 1 << HSB_SPINLOCK_NO;
@@ -157,14 +157,15 @@ impl HardwareSync for HardwareSyncBlock {
 /// Gateway to accessing to the [`HardwareSyncBlock`] instance.
 /// On creation of the first instance, `HardwareSyncBlockAccess` will initialize the global hardware synchronization state.
 /// Calls thereafter will only create a new instance of this (lightweight) type.
-pub struct HardwareSyncBlockAccess { _private: () }
+pub struct HardwareSyncBlockAccess { #[doc(hidden)] _private: () }
 
 impl HardwareSyncBlockAccess {
     /// Create a new instance.
     ///
     /// # Safety
     /// Because the first call to this function will initialize the global synchronization state,
-    /// the first call should be placed carefully in code.
+    /// the first call should be placed before code that is executing in a multicore environment
+    /// (before core0 starts core1).
     pub unsafe fn new() -> HardwareSyncBlockAccess {
         if INSTANCE.is_none() {
             let new_instance: &'static _ = static_init!(HardwareSyncBlock, HardwareSyncBlock::new());
