@@ -92,6 +92,12 @@ pub trait HardwareSync {
     /// Returns an `Err(ErrorCode)` on failure.
     /// Failure most likely means that hardware resources backing `Spinlock`s are exhausted at the time of the call.
     fn get_spinlock(&'static self) -> Result<Spinlock, ErrorCode>;
+
+    /// Returns the maximum number of spinlocks the platform supports.
+    fn spinlocks_supported(&'static self) -> usize;
+
+    /// Returns the number of spinlocks currently allocated.
+    fn spinlocks_allocated(&'static self) -> usize;
 }
 
 /// Accessor for the [`HardwareSync`] interface.

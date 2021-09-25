@@ -126,6 +126,12 @@ impl HardwareSync for HardwareSyncBlock {
 
         Err(ErrorCode::FAIL)
     }
+
+    fn spinlocks_supported(&'static self) -> usize { 32 }
+
+    fn spinlocks_allocated(&'static self) -> usize {
+        self.allocation_state.get().count_ones() as usize
+    }
 }
 
 /// Accessor for [`HardwareSyncBlock`].
@@ -191,7 +197,7 @@ unsafe fn initialize_hsb() {
 ///
 /// # Panics
 /// - When [`initialize_hsb`] has not previously been called.
-pub fn with_hsb<F, T>(f: F) -> T
+fn with_hsb<F, T>(f: F) -> T
 where
     F: FnOnce(&'static HardwareSyncBlock) -> T
 {
