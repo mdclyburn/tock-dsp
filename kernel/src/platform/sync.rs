@@ -49,19 +49,14 @@ pub trait HardwareSpinlock {
 /// but it automatically handles the responsibility of `free`ing the `HardwareSpinlock`.
 /// Instead, [`HardwareSpinlock::free`] is called once `Spinlock` falls out of scope.
 ///
+/// Create a `Spinlock` with the `From<&'static HardwareSpinlock>` trait implementation.
+///
 /// See [`HardwareSpinlock`] for a detailed description of how to use the spinlock implementation.
 pub struct Spinlock {
     hw_spinlock: &'static dyn HardwareSpinlock,
 }
 
 impl Spinlock {
-    /// Wrap a `HardwareSpinlock` in a new `Spinlock`.
-    pub fn new(hw_spinlock: &'static dyn HardwareSpinlock) -> Spinlock {
-        Spinlock {
-            hw_spinlock,
-        }
-    }
-
     /// Attempt to claim the spinlock.
     pub fn try_claim(&self) -> bool {
         self.hw_spinlock.try_claim()
@@ -78,6 +73,14 @@ impl Spinlock {
     }
 }
 
+impl From<&'static dyn HardwareSpinlock> for Spinlock {
+    fn from(hw_spinlock: &'static dyn HardwareSpinlock) -> Spinlock {
+        Spinlock {
+            hw_spinlock,
+        }
+    }
+}
+
 impl Drop for Spinlock {
     fn drop(&mut self) {
         self.hw_spinlock.free();
@@ -88,10 +91,10 @@ impl Drop for Spinlock {
 pub trait HardwareSync {
     /// Allocate a hardware-based spinlock.
     ///
-    /// Returns an `Ok(Spinlock)` on success.
-    /// Returns an `Err(ErrorCode)` on failure.
-    /// Failure most likely means that hardware resources backing `Spinlock`s are exhausted at the time of the call.
-    fn get_spinlock(&'static self) -> Result<Spinlock, ErrorCode>;
+    /// Returns an `Ok(...)` on success.
+    /// Returns an `Err(...)` on failure,
+    /// which most likely means that hardware resources backing `HardwareSpinlock`s are exhausted at the time of the call.
+    fn get_spinlock(&'static self) -> Result<&'static dyn HardwareSpinlock, ErrorCode>;
 
     /// Returns the maximum number of spinlocks the platform supports.
     fn spinlocks_supported(&'static self) -> usize;
