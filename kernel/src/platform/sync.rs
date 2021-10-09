@@ -43,7 +43,7 @@ pub trait HardwareSpinlock {
     fn free(&self);
 }
 
-/// Wrapper for [`HardwareSpinlock`] to promote hygienic use.
+/// Wrapper for `HardwareSpinlock` to promote hygienic use.
 ///
 /// The `Spinlock` provides the same interface that `HardwareSpinlock` provides,
 /// but it automatically handles the responsibility of `free`ing the `HardwareSpinlock`.
