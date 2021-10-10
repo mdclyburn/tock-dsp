@@ -126,7 +126,7 @@ impl HardwareSyncBlock {
 }
 
 impl HardwareSync for HardwareSyncBlock {
-    fn get_spinlock(&'static self) -> Result<&'static HardwareSpinlock, ErrorCode> {
+    fn get_spinlock(&'static self) -> Result<Spinlock, ErrorCode> {
         let current_state = self.allocation_state.get();
 
         // Iterate through the bits until we find a free one.
@@ -135,7 +135,7 @@ impl HardwareSync for HardwareSyncBlock {
             let mask = 1u32 << i;
             if (mask & current_state) == 0 {
                 self.allocate(i);
-                return Ok(&self.spinlocks[i as usize]);
+                return Ok(Spinlock::from((&self.spinlocks[i as usize]) as &HardwareSpinlock));
             }
         }
 

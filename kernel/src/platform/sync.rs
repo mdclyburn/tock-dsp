@@ -94,7 +94,7 @@ pub trait HardwareSync {
     /// Returns an `Ok(...)` on success.
     /// Returns an `Err(...)` on failure,
     /// which most likely means that hardware resources backing `HardwareSpinlock`s are exhausted at the time of the call.
-    fn get_spinlock(&'static self) -> Result<&'static dyn HardwareSpinlock, ErrorCode>;
+    fn get_spinlock(&'static self) -> Result<Spinlock, ErrorCode>;
 
     /// Returns the maximum number of spinlocks the platform supports.
     fn spinlocks_supported(&'static self) -> usize;
