@@ -30,8 +30,9 @@ use rp2040::clocks::{
     ReferenceAuxiliaryClockSource, ReferenceClockSource, RtcAuxiliaryClockSource,
     SystemAuxiliaryClockSource, SystemClockSource, UsbAuxiliaryClockSource,
 };
-use rp2040::gpio::{GpioFunction, RPGpio, RPGpioPin};
+use rp2040::gpio::{GpioFunction, RPGpio, RPGpioPin, SIO};
 use rp2040::multicore;
+use rp2040::psm::PowerOnStateMachine;
 use rp2040::resets::Peripheral;
 use rp2040::sysinfo;
 use rp2040::timer::RPTimer;
@@ -73,6 +74,7 @@ pub struct RaspberryPiPico {
         VirtualMuxAlarm<'static, rp2040::timer::RPTimer<'static>>,
     >,
     gpio: &'static capsules::gpio::GPIO<'static, RPGpioPin<'static>>,
+    hw_sync_access: &'static sync::HardwareSyncBlockAccess,
     led: &'static capsules::led::LedDriver<'static, LedHigh<'static, RPGpioPin<'static>>>,
     adc: &'static capsules::adc::AdcVirtualized<'static>,
     temperature: &'static capsules::temperature::TemperatureSensor<'static>,
@@ -99,13 +101,17 @@ impl SyscallDriverLookup for RaspberryPiPico {
     }
 }
 
-impl KernelResources<Rp2040<'static, Rp2040DefaultPeripherals<'static>>> for RaspberryPiPico {
+/// Abbreviated type for the RP2040 chip.
+pub type RP2040Chip = Rp2040<'static, Rp2040DefaultPeripherals<'static>>;
+
+impl KernelResources<RP2040Chip> for RaspberryPiPico {
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
     type Scheduler = RoundRobinSched<'static>;
     type SchedulerTimer = cortexm0p::systick::SysTick;
     type WatchDog = ();
+    type HardwareSyncAccess = sync::HardwareSyncBlockAccess;
 
     fn syscall_driver_lookup(&self) -> &Self::SyscallDriverLookup {
         &self
@@ -124,6 +130,10 @@ impl KernelResources<Rp2040<'static, Rp2040DefaultPeripherals<'static>>> for Ras
     }
     fn watchdog(&self) -> &Self::WatchDog {
         &()
+    }
+
+    fn hardware_sync(&self) -> Option<&Self::HardwareSyncAccess> {
+        Some(self.hw_sync_access)
     }
 }
 
@@ -228,6 +238,48 @@ fn init_clocks(peripherals: &Rp2040DefaultPeripherals) {
 #[inline(never)]
 unsafe fn get_peripherals() -> &'static mut Rp2040DefaultPeripherals<'static> {
     static_init!(Rp2040DefaultPeripherals, Rp2040DefaultPeripherals::new())
+}
+
+#[inline(never)]
+unsafe fn initialize_multicore(kernel: &Kernel,
+                               resources: &RaspberryPiPico,
+                               chip: &RP2040Chip,
+                               psm: &PowerOnStateMachine,
+                               sio: &SIO)
+{
+    debug!("Preparing synchronization structures...");
+
+    // debug!("Initializing peripherals for handoff to core1.");
+
+    // UART for core1: 8 = UART1 TX, 9 = UART1 RX.
+    // peripherals.gpio.get_pin(RPGpio::GPIO0).set_function(GpioFunction::UART);
+    // peripherals.gpio.get_pin(RPGpio::GPIO9).set_function(GpioFunction::UART);
+
+    // We actively use the SIO FIFO during launch_core1, so we wait until after
+    // launch to take interrupts for FIFO content from core1.
+    sio.disable_interrupt();
+
+    let (core1_vectors, core1_sp, core1_entry) =
+        (aspk::CORE1_VECTORS.as_ptr() as usize,
+         (&aspk::_core1_estack as *const u8) as usize,
+         (aspk::aspk_main as *const fn()) as usize);
+    // May be useful to know later.
+    aspk::CORE1_VECTORS[0] = core1_sp;
+    aspk::CORE1_VECTORS[1] = core1_entry;
+
+    debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
+           core1_vectors, core1_sp, core1_entry);
+    multicore::launch_core1(&psm, &sio, core1_vectors, core1_sp, core1_entry);
+
+    // Send over the locations for the kernel and chip resources.
+    sio.write_fifo(kernel as *const _ as usize as u32);
+    sio.write_fifo(resources as *const _ as usize as u32);
+    sio.write_fifo(chip as *const _ as usize as u32);
+
+    // Now we're ready to take interrupts from SIO.
+    // sio.enable_interrupt();
+
+    debug!("Launched core1!");
 }
 
 /// Main function called after RAM initialized.
@@ -435,6 +487,10 @@ pub unsafe fn main() {
             .finalize(());
     let _ = process_console.start();
 
+    // Single-cycle IO spinlocks
+    let hw_sync_access = static_init!(sync::HardwareSyncBlockAccess,
+                                      sync::HardwareSyncBlockAccess::new());
+
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
         .finalize(components::rr_component_helper!(NUM_PROCS));
 
@@ -446,6 +502,7 @@ pub unsafe fn main() {
         ),
         alarm,
         gpio,
+        hw_sync_access,
         led,
         console,
         adc: adc_syscall,
@@ -465,26 +522,6 @@ pub unsafe fn main() {
         peripherals.sysinfo.get_revision(),
         platform_type
     );
-
-    // debug!("Initializing peripherals for handoff to core1.");
-
-    // UART for core1: 8 = UART1 TX, 9 = UART1 RX.
-    // peripherals.gpio.get_pin(RPGpio::GPIO0).set_function(GpioFunction::UART);
-    // peripherals.gpio.get_pin(RPGpio::GPIO9).set_function(GpioFunction::UART);
-
-    let (core1_vectors, core1_sp, core1_entry) =
-        (aspk::CORE1_VECTORS.as_ptr() as usize,
-         (&aspk::_core1_estack as *const u8) as usize,
-         (aspk::aspk_main as *const fn()) as usize);
-    aspk::CORE1_VECTORS[0] = core1_entry; // May be useful to know later.
-    debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
-           core1_vectors, core1_sp, core1_entry);
-    peripherals.sio.enable_interrupt();
-    multicore::launch_core1(&peripherals.psm, &peripherals.sio,
-                            core1_vectors, core1_sp, core1_entry);
-    debug!("Launched core1!");
-
-    debug!("Initialization complete. Enter main loop");
 
     /// These symbols are defined in the linker script.
     extern "C" {
@@ -517,6 +554,28 @@ pub unsafe fn main() {
         debug!("Error loading processes!");
         debug!("{:?}", err);
     });
+
+    initialize_multicore(&board_kernel, &raspberry_pi_pico, chip, &peripherals.psm, &peripherals.sio);
+
+    let sio = SIO::new();
+    while !sio.fifo_valid() {  }
+    let first_word = sio.read_fifo();
+    debug!("First word: {:0X}", first_word);
+
+    use kernel::platform::sync::HardwareSyncAccess;
+    let allocated = hw_sync_access.access(true, |hsb| hsb.spinlocks_allocated()).unwrap();
+    debug!("Spinlock allocation: {}", allocated);
+    {
+        let (_sl0, _sl1, _sl2, allocated) = hw_sync_access.access(true, |hsb| {
+            (hsb.get_spinlock(), hsb.get_spinlock(), hsb.get_spinlock(), hsb.spinlocks_allocated())
+        }).unwrap();
+        debug!("After a few allocations: {}", allocated);
+    }
+    for i in 0..1000 { if sio.fifo_valid() { sio.read_fifo(); } }
+    let allocated = hw_sync_access.access(true, |hsb| hsb.spinlocks_allocated()).unwrap();
+    debug!("After fall from scope: {}", allocated);
+
+    debug!("Initialization complete. Enter main loop");
 
     board_kernel.kernel_loop(
         &raspberry_pi_pico,
