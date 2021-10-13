@@ -58,6 +58,7 @@ use crate::collections::queue::Queue;
 use crate::collections::ring_buffer::RingBuffer;
 use crate::hil;
 use crate::platform::chip::Chip;
+use crate::platform::sync::UnmanagedSpinlock;
 use crate::process::Process;
 use crate::utilities::cells::NumericCellExt;
 use crate::utilities::cells::{MapCell, TakeCell};
@@ -348,10 +349,13 @@ macro_rules! debug_flush_queue {
 ///////////////////////////////////////////////////////////////////
 // debug! and debug_verbose! support
 
+use crate::sync::Mutex;
+
 /// Wrapper type that we need a mutable reference to for the core::fmt::Write
 /// interface.
 pub struct DebugWriterWrapper {
     dw: MapCell<&'static DebugWriter>,
+    m: Option<Mutex<UnmanagedSpinlock, ()>>,
 }
 
 /// Main type that we need an immutable reference to so we can share it with
@@ -385,9 +389,12 @@ pub unsafe fn set_debug_writer_wrapper(debug_writer: &'static mut DebugWriterWra
 }
 
 impl DebugWriterWrapper {
-    pub fn new(dw: &'static DebugWriter) -> DebugWriterWrapper {
+    pub fn new(dw: &'static DebugWriter,
+               empty: Option<Mutex<UnmanagedSpinlock, ()>>) -> DebugWriterWrapper
+    {
         DebugWriterWrapper {
             dw: MapCell::new(dw),
+            m: empty,
         }
     }
 }

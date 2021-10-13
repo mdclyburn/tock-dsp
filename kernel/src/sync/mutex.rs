@@ -38,14 +38,14 @@ impl<'a, 'b, T> Drop for MutexGuard<'a, 'b, T> {
 }
 
 /// Mutually exclusive access provider.
-pub struct Mutex<'a, T> {
-    lock: &'a dyn Lockable,
+pub struct Mutex<L: Lockable, T> {
+    lock: L,
     resource: T,
 }
 
-impl<'a, T> Mutex<'a, T> {
+impl<L: Lockable, T> Mutex<L, T> {
     /// Create a new Mutex.
-    pub(crate) fn new(lock: &'a dyn Lockable, resource: T) -> Mutex<'a, T> {
+    pub fn new(lock: L, resource: T) -> Mutex<L, T> {
         Mutex {
             lock,
             resource,
@@ -55,11 +55,11 @@ impl<'a, T> Mutex<'a, T> {
     /// Attempt to gain access to the resource guarded by the Mutex.
     ///
     /// This function returns a `Result` that, if `Ok`, contains a `MutexGuard` the caller may use to access the resource.
-    pub fn try_lock(&self) -> Result<MutexGuard<'a, '_, T>, ErrorCode> {
+    pub fn try_lock(&self) -> Result<MutexGuard<'_, '_, T>, ErrorCode> {
         if !self.lock.try_lock() {
             Err(ErrorCode::BUSY)
         } else {
-            Ok(MutexGuard::new(self.lock, &self.resource))
+            Ok(MutexGuard::new(&self.lock, &self.resource))
         }
     }
 }

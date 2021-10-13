@@ -343,6 +343,10 @@ pub unsafe fn main() {
 
     let board_kernel = static_init!(Kernel, Kernel::new(&PROCESSES));
 
+    // Single-cycle IO spinlocks
+    let hw_sync_access = static_init!(sync::HardwareSyncBlockAccess,
+                                      sync::HardwareSyncBlockAccess::new());
+
     let process_management_capability =
         create_capability!(capabilities::ProcessManagementCapability);
     let main_loop_capability = create_capability!(capabilities::MainLoopCapability);
@@ -381,9 +385,14 @@ pub unsafe fn main() {
         capsules::console::DRIVER_NUM,
         uart_mux,
     )
-    .finalize(());
+        .finalize(());
+
     // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
+    let debug_sl: kernel::platform::sync::UnmanagedSpinlock =
+        hw_sync_access.access(true, |hsb| hsb.get_raw_spinlock()).unwrap().unwrap().into();
+    let mtx_debug_write = kernel::sync::Mutex::new(
+        debug_sl, ());
+    components::debug_writer::DebugWriterComponent::new(uart_mux, Some(mtx_debug_write)).finalize(());
 
     let gpio = GpioComponent::new(
         board_kernel,
@@ -486,10 +495,6 @@ pub unsafe fn main() {
         components::process_console::ProcessConsoleComponent::new(board_kernel, uart_mux)
             .finalize(());
     let _ = process_console.start();
-
-    // Single-cycle IO spinlocks
-    let hw_sync_access = static_init!(sync::HardwareSyncBlockAccess,
-                                      sync::HardwareSyncBlockAccess::new());
 
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
         .finalize(components::rr_component_helper!(NUM_PROCS));

@@ -2,7 +2,10 @@
 
 mod mutex;
 
-use crate::platform::sync::HardwareSpinlock;
+use crate::platform::sync::{
+    RawSpinlock,
+    UnmanagedSpinlock,
+};
 
 pub use mutex::{
     Mutex,
@@ -12,7 +15,7 @@ pub use mutex::{
 /// A type that provides locking for exclusive use.
 ///
 /// This trait presents a uniform interface for synchronization primitives to consume and provide their functionality.
-pub(crate) trait Lockable {
+pub trait Lockable {
     /// Attempt to lock the resource, returning true when successful.
     fn try_lock(&self) -> bool;
 
@@ -28,16 +31,16 @@ pub(crate) trait Lockable {
     fn release(&self);
 }
 
-impl Lockable for dyn HardwareSpinlock {
+impl Lockable for UnmanagedSpinlock {
     fn try_lock(&self) -> bool {
-        self.try_claim()
+        RawSpinlock::try_claim(self)
     }
 
     fn lock(&self) {
-        self.claim();
+        RawSpinlock::claim(self);
     }
 
     fn release(&self) {
-        self.release();
+        RawSpinlock::release(self);
     }
 }
