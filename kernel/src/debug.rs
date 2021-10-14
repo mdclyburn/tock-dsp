@@ -58,7 +58,7 @@ use crate::collections::queue::Queue;
 use crate::collections::ring_buffer::RingBuffer;
 use crate::hil;
 use crate::platform::chip::Chip;
-use crate::platform::sync::UnmanagedSpinlock;
+use crate::platform::sync::Spinlock;
 use crate::process::Process;
 use crate::utilities::cells::NumericCellExt;
 use crate::utilities::cells::{MapCell, TakeCell};
@@ -355,7 +355,7 @@ use crate::sync::Mutex;
 /// interface.
 pub struct DebugWriterWrapper {
     dw: MapCell<&'static DebugWriter>,
-    m: Option<Mutex<UnmanagedSpinlock, ()>>,
+    m: Option<Mutex<Spinlock, ()>>,
 }
 
 /// Main type that we need an immutable reference to so we can share it with
@@ -390,7 +390,7 @@ pub unsafe fn set_debug_writer_wrapper(debug_writer: &'static mut DebugWriterWra
 
 impl DebugWriterWrapper {
     pub fn new(dw: &'static DebugWriter,
-               empty: Option<Mutex<UnmanagedSpinlock, ()>>) -> DebugWriterWrapper
+               empty: Option<Mutex<Spinlock, ()>>) -> DebugWriterWrapper
     {
         DebugWriterWrapper {
             dw: MapCell::new(dw),
