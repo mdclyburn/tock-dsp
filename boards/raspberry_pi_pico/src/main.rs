@@ -388,8 +388,8 @@ pub unsafe fn main() {
         .finalize(());
 
     // Create the debugger object that handles calls to `debug!()`.
-    let debug_sl: kernel::platform::sync::Spinlock =
-        hw_sync_access.access(true, |hsb| hsb.get_spinlock()).unwrap().unwrap();
+    let debug_sl: kernel::platform::sync::ManagedSpinlock =
+        hw_sync_access.access(true, |hsb| hsb.get_spinlock()).unwrap().unwrap().into();
     let mtx_debug_write = kernel::sync::Mutex::new(debug_sl, ());
     components::debug_writer::DebugWriterComponent::new(uart_mux, Some(mtx_debug_write)).finalize(());
 

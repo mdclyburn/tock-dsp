@@ -2,29 +2,28 @@
 //!
 //! Interfaces providing access to hardware that makes synchronization possible.
 
-use core::ops::Drop;
+use core::ops::{Deref, Drop};
 
 use crate::errorcode::ErrorCode;
 
-/// Operations for a spinlock.
+/// Operations for a hardware spinlock.
 ///
-/// A spinlock that additionally offers a manual deallocation method.
 /// Types implementing this trait provide indefinite access to the holder of the spinlock
-/// until the holder calls [`RawSpinlock::free`].
+/// until the holder calls [`HardwareSpinlock::free`].
 ///
-/// ''Access'' and ''claim'' to the lock are distinct.
-/// ''Access'' means that code obtained the `RawSpinlock` type through some other code,
-/// and the code is free to attempt to ''claim'' the lock at any point thereafter.
-/// ''Claim'' means that code can attempt to change the state of the hardware backing the spinlock
+/// "Access" and "claim" to the lock are distinct.
+/// "Access" means that code obtained the `HardwareSpinlock` type through some other code,
+/// and the code is free to attempt to "claim" the lock at any point thereafter.
+/// "Claim" means that code can attempt to change the state of the hardware backing the spinlock
 /// (which may fail or succeed).
 ///
-/// Once code successfully claims the spinlock through [`RawSpinlock::claim`] or [`RawSpinlock::try_claim`],
-/// the claim holds until code calls [`RawSpinlock::release`].
+/// Once code successfully claims the spinlock through [`HardwareSpinlock::claim`] or [`HardwareSpinlock::try_claim`],
+/// the claim holds until code calls [`HardwareSpinlock::release`].
 ///
-/// Any types that make use of the `RawSpinlock` must ensure that its [`RawSpinlock::free`] is eventually called.
-/// Failure to do so means that the `RawSpinlock` is leaked.
-/// This type can be wrapped by the [`Spinlock`] type which will free the spinlock when it falls out of scope.
-pub trait RawSpinlock {
+/// Any types that make use of the `HardwareSpinlock` must ensure that its [`HardwareSpinlock::free`] is eventually called.
+/// Failure to do so means that the `HardwareSpinlock` is leaked.
+/// [`ManagedSpinlock`] can wrap this type and free the spinlock when it falls out of scope.
+pub trait HardwareSpinlock {
     /// Repeatedly attempt to claim the spinlock until it is successful.
     fn claim(&self) {
         while !self.try_claim() {  }
@@ -43,77 +42,34 @@ pub trait RawSpinlock {
     fn free(&self);
 }
 
-/// Wrapper for the `RawSpinlock`.
+/// Type wrapper for `HardwareSpinlock` to provide deallocation on Drop.
 ///
-/// Provides a _type_ to contain a [`RawSpinlock`].
-/// Other than being a type and not a trait, it works the same way
-/// (and leaks the same way, too!).
-/// `UnmanagedSpinlock` allows other types to consume it as a type parameter in generics.
-pub struct UnmanagedSpinlock {
-    raw_sl: &'static dyn RawSpinlock,
-}
-
-impl RawSpinlock for UnmanagedSpinlock {
-    fn try_claim(&self) -> bool {
-        self.raw_sl.try_claim()
-    }
-
-    fn release(&self) {
-        self.raw_sl.release();
-    }
-
-    fn free(&self) {
-        self.raw_sl.free();
-    }
-}
-
-impl From<&'static dyn RawSpinlock> for UnmanagedSpinlock {
-    fn from(sl: &'static dyn RawSpinlock) -> UnmanagedSpinlock {
-        UnmanagedSpinlock {
-            raw_sl: sl,
-        }
-    }
-}
-
-/// Wrapper for `RawSpinlock` to promote hygienic use.
+/// The `Spinlock` provides the same interface that `HardwareSpinlock` provides,
+/// but it automatically handles the responsibility of `free`ing the `HardwareSpinlock`,
+/// calling [`HardwareSpinlock::free`] once `Spinlock` falls out of scope.
 ///
-/// The `Spinlock` provides the same interface that `RawSpinlock` provides,
-/// but it automatically handles the responsibility of `free`ing the `RawSpinlock`.
-/// Instead, [`RawSpinlock::free`] is called once `Spinlock` falls out of scope.
-///
-/// Create a `Spinlock` with the `From<&'static RawSpinlock>` trait implementation.
-///
-/// See [`RawSpinlock`] for a detailed description of how to use the spinlock implementation.
-pub struct Spinlock {
-    raw_sl: &'static dyn RawSpinlock,
+/// Create it with the `From<&'static Spinlock>` trait implementation.
+pub struct ManagedSpinlock {
+    raw_sl: &'static dyn HardwareSpinlock,
 }
 
-impl Spinlock {
-    /// Attempt to claim the spinlock.
-    pub fn try_claim(&self) -> bool {
-        self.raw_sl.try_claim()
-    }
+impl Deref for ManagedSpinlock {
+    type Target = dyn HardwareSpinlock;
 
-    /// Attempt to claim the spinlock in a blocking manner.
-    pub fn claim(&self) {
-        self.raw_sl.claim();
-    }
-
-    /// Release the spinlock.
-    pub fn release(&self) {
-        self.raw_sl.release();
+    fn deref(&self) -> &'static dyn HardwareSpinlock {
+        self.raw_sl
     }
 }
 
-impl From<&'static dyn RawSpinlock> for Spinlock {
-    fn from(raw_sl: &'static dyn RawSpinlock) -> Spinlock {
-        Spinlock {
+impl From<&'static dyn HardwareSpinlock> for ManagedSpinlock {
+    fn from(raw_sl: &'static dyn HardwareSpinlock) -> ManagedSpinlock {
+        ManagedSpinlock {
             raw_sl,
         }
     }
 }
 
-impl Drop for Spinlock {
+impl Drop for ManagedSpinlock {
     fn drop(&mut self) {
         self.raw_sl.free();
     }
@@ -123,23 +79,12 @@ impl Drop for Spinlock {
 pub trait HardwareSync {
     /// Allocate an unmanaged spinlock.
     ///
-    /// Returns a [`RawSpinlock`] not wrapped by a `Spinlock`.
-    /// This means that the caller must ensure that the spinlock is deallocated.
+    /// Returns a [`HardwareSpinlock`].
+    /// The caller must deallocate the spinlock manually.
+    ///
     /// Returns an `Ok(...)` on success.
     /// Returns an `Err(...)` on failure.
-    fn get_raw_spinlock(&'static self) -> Result<&'static dyn RawSpinlock, ErrorCode>;
-
-    /// Allocate a managed spinlock.
-    ///
-    /// The [`Spinlock`] this function returns will handle deallocating the contained `RawSpinlock`.
-    ///
-    /// Returns an `Ok(...)` on success.
-    /// Returns an `Err(...)` on failure,
-    /// which most likely means that hardware resources backing `RawSpinlock`s are exhausted at the time of the call.
-    fn get_spinlock(&'static self) -> Result<Spinlock, ErrorCode> {
-        self.get_raw_spinlock()
-            .map(Spinlock::from)
-    }
+    fn get_spinlock(&'static self) -> Result<&'static dyn HardwareSpinlock, ErrorCode>;
 
     /// Returns the maximum number of spinlocks the platform supports.
     fn spinlocks_supported(&'static self) -> usize;

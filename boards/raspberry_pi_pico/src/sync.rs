@@ -10,7 +10,7 @@ use kernel::errorcode::ErrorCode;
 use kernel::platform::sync::{
     HardwareSync,
     HardwareSyncAccess,
-    RawSpinlock,
+    HardwareSpinlock,
 };
 
 /// Reference to the single instance of the hardware synchronization state.
@@ -45,7 +45,7 @@ impl SIOSpinlock {
     }
 }
 
-impl RawSpinlock for SIOSpinlock {
+impl HardwareSpinlock for SIOSpinlock {
     fn try_claim(&self) -> bool {
         let sio = SIO::new();
         sio.claim_spinlock(self.spinlock_no())
@@ -125,7 +125,7 @@ impl HardwareSyncBlock {
 }
 
 impl HardwareSync for HardwareSyncBlock {
-    fn get_raw_spinlock(&'static self) -> Result<&'static dyn RawSpinlock, ErrorCode> {
+    fn get_spinlock(&'static self) -> Result<&'static dyn HardwareSpinlock, ErrorCode> {
         let current_state = self.allocation_state.get();
 
         // Iterate through the bits until we find a free one.

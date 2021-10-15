@@ -24,7 +24,7 @@ use kernel::collections::ring_buffer::RingBuffer;
 use kernel::component::Component;
 use kernel::hil;
 use kernel::hil::uart;
-use kernel::platform::sync::Spinlock;
+use kernel::platform::sync::ManagedSpinlock;
 use kernel::static_init;
 
 // The sum of the output_buf and internal_buf is set to a multiple of 1024 bytes in order to avoid excessive
@@ -42,12 +42,12 @@ use kernel::sync::Mutex;
 
 pub struct DebugWriterComponent {
     uart_mux: &'static MuxUart<'static>,
-    m: Option<Mutex<Spinlock, ()>>,
+    m: Option<Mutex<ManagedSpinlock, ()>>,
 }
 
 impl DebugWriterComponent {
     pub fn new(uart_mux: &'static MuxUart,
-               empty: Option<Mutex<Spinlock, ()>>) -> DebugWriterComponent {
+               empty: Option<Mutex<ManagedSpinlock, ()>>) -> DebugWriterComponent {
         DebugWriterComponent {
             uart_mux: uart_mux,
             m: empty,
@@ -89,11 +89,11 @@ impl Component for DebugWriterComponent {
 
 pub struct DebugWriterNoMuxComponent<U: uart::Uart<'static> + uart::Transmit<'static> + 'static> {
     uart: &'static U,
-    m: Option<Mutex<Spinlock, ()>>,
+    m: Option<Mutex<ManagedSpinlock, ()>>,
 }
 
 impl<U: uart::Uart<'static> + uart::Transmit<'static> + 'static> DebugWriterNoMuxComponent<U> {
-    pub fn new(uart: &'static U, empty: Option<Mutex<Spinlock, ()>>) -> Self {
+    pub fn new(uart: &'static U, empty: Option<Mutex<ManagedSpinlock, ()>>) -> Self {
         Self {
             uart,
             m: empty,

@@ -3,7 +3,8 @@
 mod mutex;
 
 use crate::platform::sync::{
-    Spinlock,
+    HardwareSpinlock,
+    ManagedSpinlock,
 };
 
 pub use mutex::{
@@ -30,7 +31,7 @@ pub trait Lockable {
     fn release(&self);
 }
 
-impl Lockable for Spinlock {
+impl Lockable for ManagedSpinlock {
     fn try_lock(&self) -> bool {
         self.try_claim()
     }
@@ -40,6 +41,6 @@ impl Lockable for Spinlock {
     }
 
     fn release(&self) {
-        self.release();
+        HardwareSpinlock::release(core::ops::Deref::deref(self));
     }
 }
