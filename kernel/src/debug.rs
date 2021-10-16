@@ -355,7 +355,7 @@ use crate::sync::Mutex;
 /// interface.
 pub struct DebugWriterWrapper {
     dw: MapCell<&'static DebugWriter>,
-    m: Option<Mutex<ManagedSpinlock, ()>>,
+    m: Mutex<ManagedSpinlock, ()>,
 }
 
 /// Main type that we need an immutable reference to so we can share it with
@@ -390,7 +390,7 @@ pub unsafe fn set_debug_writer_wrapper(debug_writer: &'static mut DebugWriterWra
 
 impl DebugWriterWrapper {
     pub fn new(dw: &'static DebugWriter,
-               empty: Option<Mutex<ManagedSpinlock, ()>>) -> DebugWriterWrapper
+               empty: Mutex<ManagedSpinlock, ()>) -> DebugWriterWrapper
     {
         DebugWriterWrapper {
             dw: MapCell::new(dw),
@@ -480,28 +480,33 @@ impl hil::uart::TransmitClient for DebugWriter {
 /// Pass through functions.
 impl DebugWriterWrapper {
     fn increment_count(&self) {
+        let _mtx_g = self.m.lock();
         self.dw.map(|dw| {
             dw.increment_count();
         });
     }
 
     fn get_count(&self) -> usize {
+        let _mtx_g = self.m.lock();
         self.dw.map_or(0, |dw| dw.get_count())
     }
 
     fn publish_bytes(&self) {
+        let _mtx_g = self.m.lock();
         self.dw.map(|dw| {
             dw.publish_bytes();
         });
     }
 
     fn extract(&self) -> Option<&mut RingBuffer<'static, u8>> {
+        let _mtx_g = self.m.lock();
         self.dw.map_or(None, |dw| dw.extract())
     }
 }
 
 impl IoWrite for DebugWriterWrapper {
     fn write(&mut self, bytes: &[u8]) {
+        let _mtx_g = self.m.lock();
         const FULL_MSG: &[u8] = b"\n*** DEBUG BUFFER FULL ***\n";
         self.dw.map(|dw| {
             dw.internal_buffer.map(|ring_buffer| {

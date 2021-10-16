@@ -49,6 +49,7 @@ pub trait HardwareSpinlock {
 /// calling [`HardwareSpinlock::free`] once `Spinlock` falls out of scope.
 ///
 /// Create it with the `From<&'static Spinlock>` trait implementation.
+#[derive(Clone)]
 pub struct ManagedSpinlock {
     raw_sl: &'static dyn HardwareSpinlock,
 }

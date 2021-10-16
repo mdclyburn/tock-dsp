@@ -38,6 +38,7 @@ impl<'a, 'b, T> Drop for MutexGuard<'a, 'b, T> {
 }
 
 /// Mutually exclusive access provider.
+#[derive(Copy, Clone)] // TODO: allowing copies isn't quite right.
 pub struct Mutex<L: Lockable, T> {
     lock: L,
     resource: T,
@@ -61,5 +62,12 @@ impl<L: Lockable, T> Mutex<L, T> {
         } else {
             Ok(MutexGuard::new(&self.lock, &self.resource))
         }
+    }
+
+    /// Repeatedly attempt to access the resource until successful.
+    pub fn lock(&self) -> MutexGuard<'_, '_, T> {
+        while !self.lock.try_lock() {  }
+
+        MutexGuard::new(&self.lock, &self.resource)
     }
 }
