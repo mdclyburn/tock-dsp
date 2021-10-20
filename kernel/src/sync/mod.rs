@@ -1,6 +1,7 @@
 //! Synchronization primitives.
 
 mod mutex;
+mod semaphore;
 
 use crate::platform::sync::{
     HardwareSpinlock,
@@ -11,6 +12,7 @@ pub use mutex::{
     Mutex,
     MutexGuard,
 };
+pub use semaphore::Semaphore;
 
 /// A type that provides locking for exclusive use.
 ///

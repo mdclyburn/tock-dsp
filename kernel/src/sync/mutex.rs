@@ -1,3 +1,5 @@
+//! Mutex synchronization primitive.
+
 use core::ops::Deref;
 
 use crate::errorcode::ErrorCode;

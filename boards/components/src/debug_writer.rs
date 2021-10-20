@@ -24,7 +24,6 @@ use kernel::collections::ring_buffer::RingBuffer;
 use kernel::component::Component;
 use kernel::hil;
 use kernel::hil::uart;
-use kernel::platform::sync::ManagedSpinlock;
 use kernel::static_init;
 
 // The sum of the output_buf and internal_buf is set to a multiple of 1024 bytes in order to avoid excessive
@@ -38,19 +37,14 @@ const DEBUG_BUFFER_KBYTE: usize = 1;
 // [DEBUG_BUFFER_SPLIT, DEBUG_BUFFER_KBYTE * 1024) are used for internal_buf.
 const DEBUG_BUFFER_SPLIT: usize = 64;
 
-use kernel::sync::Mutex;
-
 pub struct DebugWriterComponent {
     uart_mux: &'static MuxUart<'static>,
-    m: Option<Mutex<ManagedSpinlock, ()>>,
 }
 
 impl DebugWriterComponent {
-    pub fn new(uart_mux: &'static MuxUart,
-               empty: Option<Mutex<ManagedSpinlock, ()>>) -> DebugWriterComponent {
+    pub fn new(uart_mux: &'static MuxUart) -> DebugWriterComponent {
         DebugWriterComponent {
             uart_mux: uart_mux,
-            m: empty,
         }
     }
 }
@@ -81,7 +75,7 @@ impl Component for DebugWriterComponent {
 
         let debug_wrapper = static_init!(
             kernel::debug::DebugWriterWrapper,
-            kernel::debug::DebugWriterWrapper::new(debugger, self.m)
+            kernel::debug::DebugWriterWrapper::new(debugger)
         );
         kernel::debug::set_debug_writer_wrapper(debug_wrapper);
     }
@@ -89,14 +83,12 @@ impl Component for DebugWriterComponent {
 
 pub struct DebugWriterNoMuxComponent<U: uart::Uart<'static> + uart::Transmit<'static> + 'static> {
     uart: &'static U,
-    m: Option<Mutex<ManagedSpinlock, ()>>,
 }
 
 impl<U: uart::Uart<'static> + uart::Transmit<'static> + 'static> DebugWriterNoMuxComponent<U> {
-    pub fn new(uart: &'static U, empty: Option<Mutex<ManagedSpinlock, ()>>) -> Self {
+    pub fn new(uart: &'static U) -> Self {
         Self {
             uart,
-            m: empty,
         }
     }
 }
@@ -124,7 +116,7 @@ impl<U: uart::Uart<'static> + uart::Transmit<'static> + 'static> Component
 
         let debug_wrapper = static_init!(
             kernel::debug::DebugWriterWrapper,
-            kernel::debug::DebugWriterWrapper::new(debugger, self.m)
+            kernel::debug::DebugWriterWrapper::new(debugger)
         );
         kernel::debug::set_debug_writer_wrapper(debug_wrapper);
 

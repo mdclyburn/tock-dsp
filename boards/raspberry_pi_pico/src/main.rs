@@ -247,7 +247,7 @@ unsafe fn initialize_multicore(kernel: &Kernel,
                                psm: &PowerOnStateMachine,
                                sio: &SIO)
 {
-    debug!("Preparing synchronization structures...");
+    // debug!("Preparing synchronization structures...");
 
     // debug!("Initializing peripherals for handoff to core1.");
 
@@ -267,8 +267,8 @@ unsafe fn initialize_multicore(kernel: &Kernel,
     aspk::CORE1_VECTORS[0] = core1_sp;
     aspk::CORE1_VECTORS[1] = core1_entry;
 
-    debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
-           core1_vectors, core1_sp, core1_entry);
+    // debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
+    //        core1_vectors, core1_sp, core1_entry);
     multicore::launch_core1(&psm, &sio, core1_vectors, core1_sp, core1_entry);
 
     // Send over the locations for the kernel and chip resources.
@@ -278,8 +278,6 @@ unsafe fn initialize_multicore(kernel: &Kernel,
 
     // Now we're ready to take interrupts from SIO.
     // sio.enable_interrupt();
-
-    debug!("Launched core1!");
 }
 
 /// Main function called after RAM initialized.
@@ -388,10 +386,14 @@ pub unsafe fn main() {
         .finalize(());
 
     // Create the debugger object that handles calls to `debug!()`.
-    let debug_sl: kernel::platform::sync::ManagedSpinlock =
-        hw_sync_access.access(true, |hsb| hsb.get_spinlock()).unwrap().unwrap().into();
-    let mtx_debug_write = kernel::sync::Mutex::new(debug_sl, ());
-    components::debug_writer::DebugWriterComponent::new(uart_mux, Some(mtx_debug_write)).finalize(());
+    let debug_sl: &'static kernel::platform::sync::ManagedSpinlock =
+        static_init!(kernel::platform::sync::ManagedSpinlock,
+                     hw_sync_access.access(true, |hsb| hsb.get_spinlock()).unwrap().unwrap().into());
+    let sem_debug_write = static_init!(
+        kernel::sync::Semaphore,
+        kernel::sync::Semaphore::new(debug_sl, 1));
+    kernel::debug::use_semaphore(sem_debug_write);
+    components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
     let gpio = GpioComponent::new(
         board_kernel,
@@ -521,11 +523,11 @@ pub unsafe fn main() {
         sysinfo::Platform::Fpga => "FPGA",
     };
 
-    debug!(
-        "RP2040 Revision {} {}",
-        peripherals.sysinfo.get_revision(),
-        platform_type
-    );
+    // debug!(
+    //     "RP2040 Revision {} {}",
+    //     peripherals.sysinfo.get_revision(),
+    //     platform_type
+    // );
 
     /// These symbols are defined in the linker script.
     extern "C" {
@@ -559,27 +561,29 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
+    debug!("Entering multicore...");
     initialize_multicore(&board_kernel, &raspberry_pi_pico, chip, &peripherals.psm, &peripherals.sio);
+    debug!("Launched core1!");
 
     let sio = SIO::new();
     while !sio.fifo_valid() {  }
     let first_word = sio.read_fifo();
-    debug!("First word: {:0X}", first_word);
+    // debug!("First word: {:0X}", first_word);
 
     use kernel::platform::sync::HardwareSyncAccess;
     let allocated = hw_sync_access.access(true, |hsb| hsb.spinlocks_allocated()).unwrap();
-    debug!("Spinlock allocation: {}", allocated);
-    {
-        let (_sl0, _sl1, _sl2, allocated) = hw_sync_access.access(true, |hsb| {
-            (hsb.get_spinlock(), hsb.get_spinlock(), hsb.get_spinlock(), hsb.spinlocks_allocated())
-        }).unwrap();
-        debug!("After a few allocations: {}", allocated);
-    }
-    for i in 0..1000 { if sio.fifo_valid() { sio.read_fifo(); } }
-    let allocated = hw_sync_access.access(true, |hsb| hsb.spinlocks_allocated()).unwrap();
-    debug!("After fall from scope: {}", allocated);
+    // debug!("Spinlock allocation: {}", allocated);
+    // {
+    //     let (_sl0, _sl1, _sl2, allocated) = hw_sync_access.access(true, |hsb| {
+    //         (hsb.get_spinlock(), hsb.get_spinlock(), hsb.get_spinlock(), hsb.spinlocks_allocated())
+    //     }).unwrap();
+    //     debug!("After a few allocations: {}", allocated);
+    // }
+    // for i in 0..1000 { if sio.fifo_valid() { sio.read_fifo(); } }
+    // let allocated = hw_sync_access.access(true, |hsb| hsb.spinlocks_allocated()).unwrap();
+    // debug!("After fall from scope: {}", allocated);
 
-    debug!("Initialization complete. Enter main loop");
+    // debug!("Initialization complete. Enter main loop");
 
     board_kernel.kernel_loop(
         &raspberry_pi_pico,

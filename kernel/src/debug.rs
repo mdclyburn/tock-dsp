@@ -58,7 +58,6 @@ use crate::collections::queue::Queue;
 use crate::collections::ring_buffer::RingBuffer;
 use crate::hil;
 use crate::platform::chip::Chip;
-use crate::platform::sync::ManagedSpinlock;
 use crate::process::Process;
 use crate::utilities::cells::NumericCellExt;
 use crate::utilities::cells::{MapCell, TakeCell};
@@ -349,13 +348,12 @@ macro_rules! debug_flush_queue {
 ///////////////////////////////////////////////////////////////////
 // debug! and debug_verbose! support
 
-use crate::sync::Mutex;
+use crate::sync::Semaphore;
 
 /// Wrapper type that we need a mutable reference to for the core::fmt::Write
 /// interface.
 pub struct DebugWriterWrapper {
     dw: MapCell<&'static DebugWriter>,
-    m: Mutex<ManagedSpinlock, ()>,
 }
 
 /// Main type that we need an immutable reference to so we can share it with
@@ -389,12 +387,10 @@ pub unsafe fn set_debug_writer_wrapper(debug_writer: &'static mut DebugWriterWra
 }
 
 impl DebugWriterWrapper {
-    pub fn new(dw: &'static DebugWriter,
-               empty: Mutex<ManagedSpinlock, ()>) -> DebugWriterWrapper
+    pub fn new(dw: &'static DebugWriter) -> DebugWriterWrapper
     {
         DebugWriterWrapper {
             dw: MapCell::new(dw),
-            m: empty,
         }
     }
 }
@@ -480,33 +476,28 @@ impl hil::uart::TransmitClient for DebugWriter {
 /// Pass through functions.
 impl DebugWriterWrapper {
     fn increment_count(&self) {
-        let _mtx_g = self.m.lock();
         self.dw.map(|dw| {
             dw.increment_count();
         });
     }
 
     fn get_count(&self) -> usize {
-        let _mtx_g = self.m.lock();
         self.dw.map_or(0, |dw| dw.get_count())
     }
 
     fn publish_bytes(&self) {
-        let _mtx_g = self.m.lock();
         self.dw.map(|dw| {
             dw.publish_bytes();
         });
     }
 
     fn extract(&self) -> Option<&mut RingBuffer<'static, u8>> {
-        let _mtx_g = self.m.lock();
         self.dw.map_or(None, |dw| dw.extract())
     }
 }
 
 impl IoWrite for DebugWriterWrapper {
     fn write(&mut self, bytes: &[u8]) {
-        let _mtx_g = self.m.lock();
         const FULL_MSG: &[u8] = b"\n*** DEBUG BUFFER FULL ***\n";
         self.dw.map(|dw| {
             dw.internal_buffer.map(|ring_buffer| {
@@ -539,12 +530,23 @@ impl Write for DebugWriterWrapper {
     }
 }
 
+/// Set the semaphore to use with multiprogramming.
+pub unsafe fn use_semaphore(s: &'static Semaphore) {
+    DEBUG_SEM = Some(s);
+}
+
+static mut DEBUG_SEM: Option<&'static Semaphore> = None;
+
 pub fn begin_debug_fmt(args: Arguments) {
     let writer = unsafe { get_debug_writer() };
+
+    unsafe { DEBUG_SEM.unwrap().wait(); }
 
     let _ = write(writer, args);
     let _ = writer.write_str("\r\n");
     writer.publish_bytes();
+
+    unsafe { DEBUG_SEM.unwrap().signal(); }
 }
 
 pub fn begin_debug_verbose_fmt(args: Arguments, file_line: &(&'static str, u32)) {

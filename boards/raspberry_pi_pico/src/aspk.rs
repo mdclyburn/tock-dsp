@@ -1,6 +1,9 @@
 #![allow(non_upper_case_globals)]
 
-use kernel::Kernel;
+use kernel::{
+    Kernel,
+    debug,
+};
 use cortexm0p::nvic;
 use rp2040::{
     self,
@@ -37,32 +40,40 @@ pub unsafe fn aspk_main() {
     // Initialize all vectors and IRQ handlers to something.
     // Skip the first two since that is the initial stack
     // pointer value and the reset vector.
-    for (no, vec) in (0..).zip(&mut CORE1_VECTORS[2..]) {
-        *vec = match no {
-            2 | 3 | 11 | 14 => fail_interrupt as *const fn() as usize,
-            _ => ignored_interrupt as *const fn() as usize,
-        };
-    };
+    // for (no, vec) in (0..).zip(&mut CORE1_VECTORS[2..]) {
+    //     *vec = match no {
+    //         2 | 3 | 11 | 14 => fail_interrupt as *const fn() as usize,
+    //         _ => ignored_interrupt as *const fn() as usize,
+    //     };
+    // };
 
-    for irq in &mut CORE1_IRQS {
-        *irq = ignored_interrupt as usize;
-    }
+    // for irq in &mut CORE1_IRQS {
+    //     *irq = ignored_interrupt as usize;
+    // }
 
-    let hw_sync_access = sync::HardwareSyncBlockAccess::new();
-    let _sl = {
-        use kernel::platform::sync::HardwareSyncAccess;
-        hw_sync_access.access(true, |hsb| hsb.get_spinlock())
-    };
+    // let hw_sync_access = sync::HardwareSyncBlockAccess::new();
+    // let _sl = {
+    //     use kernel::platform::sync::HardwareSyncAccess;
+    //     hw_sync_access.access(true, |hsb| hsb.get_spinlock())
+    // };
 
     let sio = SIO::new();
 
     while !sio.fifo_ready() {  }
     sio.write_fifo(0x41_53_50_4B);
+    debug!("ASPK launched.");
 
     // The first three words from the other side are the kernel, board, and chip resources.
-    let (kernel, board_resources, chip_resources) = receive_resources(&sio);
+    // let (kernel, board_resources, chip_resources) = receive_resources(&sio);
+    // debug!("ASPK received resources!");
 
+    let mut b = true;
     loop {
+        if b {
+            debug!("In the loop!");
+            b = false;
+        }
+        // debug!("ASPK running...");
         // cortexm0p::support::wfe();
         // while sio.fifo_valid() {
         //     let _ = sio.read_fifo();
