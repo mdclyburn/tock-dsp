@@ -108,6 +108,14 @@ impl<'a, I: InterruptService<()>> Chip for Rp2040<'a, I> {
     }
 
     unsafe fn print_state(&self, writer: &mut dyn Write) {
+        let sio = SIO::new();
+        let _ = writer.write_fmt(
+            format_args!("\r\n---| RP2040 processor{} |---",
+                         match sio.get_processor() {
+                             Processor::Processor0 => 0,
+                             Processor::Processor1 => 1
+                         }));
+
         cortexm0p::print_cortexm0_state(writer);
     }
 }

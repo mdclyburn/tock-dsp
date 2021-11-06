@@ -111,7 +111,7 @@ pub unsafe fn panic_print<W: Write + IoWrite, C: Chip>(
     // Flush debug buffer if needed
     flush(writer);
     panic_cpu_state(chip, writer);
-    panic_process_info(processes, writer);
+    // panic_process_info(processes, writer);
 }
 
 /// Tock default panic routine.
