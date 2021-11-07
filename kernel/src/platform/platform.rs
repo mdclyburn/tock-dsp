@@ -7,6 +7,7 @@ use crate::syscall;
 use crate::syscall_driver::SyscallDriver;
 
 use crate::platform::chip::Chip;
+use crate::platform::interprocessor;
 use crate::platform::scheduler_timer;
 use crate::platform::sync;
 use crate::platform::watchdog;
@@ -46,6 +47,14 @@ pub trait KernelResources<C: Chip> {
     /// interface. See [`sync::HardwareSyncAccess`] for details.
     type HardwareSyncAccess: sync::HardwareSyncAccess = ();
 
+    /// Method of communication between processors in a multicore system.
+    type InterprocessorMessaging: interprocessor::InterprocessorMessenger = ();
+
+    /// Handler for incoming messages from other processors in a multicore system.
+    ///
+    /// This type must be compatible with the `InterprocessorMessaging` type.
+    type InterprocessorMessageDispatch: interprocessor::MessageDispatcher = ();
+
     /// Returns a reference to the implementation of the SyscallDriverLookup this
     /// platform will use to route syscalls.
     fn syscall_driver_lookup(&self) -> &Self::SyscallDriverLookup;
@@ -72,6 +81,9 @@ pub trait KernelResources<C: Chip> {
 
     /// Returns an optional reference to the implementation of hardware synchronization for the platform.
     fn hardware_sync(&self) -> Option<&Self::HardwareSyncAccess> { None }
+
+    fn interprocessor_communication(&self) -> Option<(&Self::InterprocessorMessaging,
+                                                      &Self::InterprocessorMessageDispatch)> { None }
 }
 
 /// Configure the system call dispatch mapping.

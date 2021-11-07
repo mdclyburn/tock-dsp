@@ -3,6 +3,7 @@
 //! Implementations of these traits are used by the core kernel.
 
 pub mod chip;
+pub mod interprocessor;
 pub mod mpu;
 pub mod scheduler_timer;
 pub mod sync;
