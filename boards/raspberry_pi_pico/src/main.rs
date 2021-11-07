@@ -30,6 +30,7 @@ use rp2040::clocks::{
     ReferenceAuxiliaryClockSource, ReferenceClockSource, RtcAuxiliaryClockSource,
     SystemAuxiliaryClockSource, SystemClockSource, UsbAuxiliaryClockSource,
 };
+use rp2040::sio;
 use rp2040::gpio::{GpioFunction, RPGpio, RPGpioPin, SIO};
 use rp2040::multicore;
 use rp2040::psm::PowerOnStateMachine;
@@ -39,6 +40,7 @@ use rp2040::timer::RPTimer;
 
 mod aspk;
 mod io;
+mod ipm;
 mod flash_bootloader;
 mod sync;
 
@@ -75,6 +77,7 @@ pub struct RaspberryPiPico {
     >,
     gpio: &'static capsules::gpio::GPIO<'static, RPGpioPin<'static>>,
     hw_sync_access: &'static sync::HardwareSyncBlockAccess,
+    ipm: &'static ipm::ASPKMessaging,
     led: &'static capsules::led::LedDriver<'static, LedHigh<'static, RPGpioPin<'static>>>,
     adc: &'static capsules::adc::AdcVirtualized<'static>,
     temperature: &'static capsules::temperature::TemperatureSensor<'static>,
@@ -112,6 +115,8 @@ impl KernelResources<RP2040Chip> for RaspberryPiPico {
     type SchedulerTimer = cortexm0p::systick::SysTick;
     type WatchDog = ();
     type HardwareSyncAccess = sync::HardwareSyncBlockAccess;
+    type InterprocessorMessaging = ipm::ASPKMessaging;
+    type InterprocessorMessageDispatch = ipm::ASPKMessaging;
 
     fn syscall_driver_lookup(&self) -> &Self::SyscallDriverLookup {
         &self
@@ -134,6 +139,12 @@ impl KernelResources<RP2040Chip> for RaspberryPiPico {
 
     fn hardware_sync(&self) -> Option<&Self::HardwareSyncAccess> {
         Some(self.hw_sync_access)
+    }
+
+    fn interprocessor_communication(&self) -> Option<(&Self::InterprocessorMessaging,
+                                                      &Self::InterprocessorMessageDispatch)>
+    {
+        Some((self.ipm, self.ipm))
     }
 }
 
@@ -267,8 +278,8 @@ unsafe fn initialize_multicore(kernel: &Kernel,
     aspk::CORE1_VECTORS[0] = core1_sp;
     aspk::CORE1_VECTORS[1] = core1_entry;
 
-    // debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
-    //        core1_vectors, core1_sp, core1_entry);
+    debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
+           core1_vectors, core1_sp, core1_entry);
     multicore::launch_core1(&psm, &sio, core1_vectors, core1_sp, core1_entry);
 
     // Send over the locations for the kernel and chip resources.
@@ -344,6 +355,12 @@ pub unsafe fn main() {
     // Single-cycle IO spinlocks
     let hw_sync_access = static_init!(sync::HardwareSyncBlockAccess,
                                       sync::HardwareSyncBlockAccess::new());
+
+    // RP2040 interprocessor FIFO messaging
+    let aspk_messaging = static_init!(ipm::ASPKMessaging,
+                                      ipm::ASPKMessaging::new());
+    use kernel::hil::fifo::FIFO;
+    peripherals.fifo.set_client(aspk_messaging);
 
     let process_management_capability =
         create_capability!(capabilities::ProcessManagementCapability);
@@ -509,6 +526,7 @@ pub unsafe fn main() {
         alarm,
         gpio,
         hw_sync_access,
+        ipm: aspk_messaging,
         led,
         console,
         adc: adc_syscall,
@@ -571,7 +589,7 @@ pub unsafe fn main() {
     // debug!("First word: {:0X}", first_word);
 
     use kernel::platform::sync::HardwareSyncAccess;
-    let allocated = hw_sync_access.access(true, |hsb| hsb.spinlocks_allocated()).unwrap();
+    // let allocated = hw_sync_access.access(true, |hsb| hsb.spinlocks_allocated()).unwrap();
     // debug!("Spinlock allocation: {}", allocated);
     // {
     //     let (_sl0, _sl1, _sl2, allocated) = hw_sync_access.access(true, |hsb| {

@@ -40,16 +40,16 @@ pub unsafe fn aspk_main() {
     // Initialize all vectors and IRQ handlers to something.
     // Skip the first two since that is the initial stack
     // pointer value and the reset vector.
-    // for (no, vec) in (0..).zip(&mut CORE1_VECTORS[2..]) {
-    //     *vec = match no {
-    //         2 | 3 | 11 | 14 => fail_interrupt as *const fn() as usize,
-    //         _ => ignored_interrupt as *const fn() as usize,
-    //     };
-    // };
+    for (no, vec) in (0..).zip(&mut CORE1_VECTORS[2..]) {
+        *vec = match no {
+            2 | 3 | 11 | 14 => fail_interrupt as *const fn() as usize,
+            _ => ignored_interrupt as *const fn() as usize,
+        };
+    };
 
-    // for irq in &mut CORE1_IRQS {
-    //     *irq = ignored_interrupt as usize;
-    // }
+    for irq in &mut CORE1_IRQS {
+        *irq = ignored_interrupt as usize;
+    }
 
     // let hw_sync_access = sync::HardwareSyncBlockAccess::new();
     // let _sl = {
@@ -64,9 +64,10 @@ pub unsafe fn aspk_main() {
     debug!("ASPK launched.");
 
     // The first three words from the other side are the kernel, board, and chip resources.
-    // let (kernel, board_resources, chip_resources) = receive_resources(&sio);
-    // debug!("ASPK received resources!");
+    let (kernel, board_resources, chip_resources) = receive_resources(&sio);
+    debug!("ASPK received resources!");
 
+    unimplemented!();
     let mut b = true;
     loop {
         if b {
@@ -111,9 +112,8 @@ unsafe fn handle_interrupt() {
 
 /// "Handler" for interrupts that are not being explicitly handled by ASPK.
 #[allow(dead_code)]
-fn ignored_interrupt() {
-    // This code will eventually notify so we are aware of ignored interrupts.
-    // For now, just clear it and move on.
+unsafe fn ignored_interrupt() {
+    loop { cortexm0p::support::wfe(); }
 }
 
 /// "Handler" for interrupts that should be handled;
