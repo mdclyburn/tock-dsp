@@ -11,6 +11,7 @@ use crate::gpio::{RPPins, SIO};
 use crate::interrupts;
 use crate::psm::PowerOnStateMachine;
 use crate::resets::Resets;
+use crate::sio::FIFO;
 use crate::spi;
 use crate::sysinfo;
 use crate::timer::RPTimer;
@@ -20,6 +21,7 @@ use crate::xosc::Xosc;
 use cortexm0p::interrupt_mask;
 
 #[repr(u8)]
+#[derive(Copy, Clone)]
 pub enum Processor {
     Processor0 = 0,
     Processor1 = 1,
@@ -133,6 +135,7 @@ pub struct Rp2040DefaultPeripherals<'a> {
     pub spi0: spi::Spi<'a>,
     pub sysinfo: sysinfo::SysInfo,
     pub psm: PowerOnStateMachine,
+    pub fifo: FIFO,
 }
 
 impl<'a> Rp2040DefaultPeripherals<'a> {
@@ -150,6 +153,7 @@ impl<'a> Rp2040DefaultPeripherals<'a> {
             spi0: spi::Spi::new_spi0(),
             sysinfo: sysinfo::SysInfo::new(),
             psm: PowerOnStateMachine::new(),
+            fifo: FIFO::new(),
         }
     }
 
@@ -167,11 +171,11 @@ impl InterruptService<()> for Rp2040DefaultPeripherals<'_> {
                 true
             }
             interrupts::SIO_IRQ_PROC0 => {
-                self.sio.handle_proc_interrupt(Processor::Processor0);
+                self.fifo.handle_interrupt();
                 true
             }
             interrupts::SIO_IRQ_PROC1 => {
-                self.sio.handle_proc_interrupt(Processor::Processor1);
+                self.fifo.handle_interrupt();
                 true
             }
             interrupts::SPI0_IRQ => {

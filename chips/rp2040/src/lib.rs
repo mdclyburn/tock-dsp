@@ -9,6 +9,7 @@ pub mod interrupts;
 pub mod multicore;
 pub mod psm;
 pub mod resets;
+pub mod sio;
 pub mod spi;
 pub mod sysinfo;
 pub mod timer;

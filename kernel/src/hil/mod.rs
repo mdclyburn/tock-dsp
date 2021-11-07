@@ -9,6 +9,7 @@ pub mod dac;
 pub mod digest;
 pub mod eic;
 pub mod entropy;
+pub mod fifo;
 pub mod flash;
 pub mod gpio;
 pub mod gpio_async;
