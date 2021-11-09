@@ -116,7 +116,6 @@ impl KernelResources<RP2040Chip> for RaspberryPiPico {
     type WatchDog = ();
     type HardwareSyncAccess = sync::HardwareSyncBlockAccess;
     type InterprocessorMessaging = ipm::ASPKMessaging;
-    type InterprocessorMessageDispatch = ipm::ASPKMessaging;
 
     fn syscall_driver_lookup(&self) -> &Self::SyscallDriverLookup {
         &self
@@ -141,10 +140,9 @@ impl KernelResources<RP2040Chip> for RaspberryPiPico {
         Some(self.hw_sync_access)
     }
 
-    fn interprocessor_communication(&self) -> Option<(&Self::InterprocessorMessaging,
-                                                      &Self::InterprocessorMessageDispatch)>
+    fn interprocessor_communication(&self) -> Option<&Self::InterprocessorMessaging>
     {
-        Some((self.ipm, self.ipm))
+        Some(self.ipm)
     }
 }
 
@@ -288,7 +286,7 @@ unsafe fn initialize_multicore(kernel: &Kernel,
     sio.write_fifo(chip as *const _ as usize as u32);
 
     // Now we're ready to take interrupts from SIO.
-    // sio.enable_interrupt();
+    sio.enable_interrupt();
 }
 
 /// Main function called after RAM initialized.
@@ -583,9 +581,9 @@ pub unsafe fn main() {
     initialize_multicore(&board_kernel, &raspberry_pi_pico, chip, &peripherals.psm, &peripherals.sio);
     debug!("Launched core1!");
 
-    let sio = SIO::new();
-    while !sio.fifo_valid() {  }
-    let first_word = sio.read_fifo();
+    // let sio = SIO::new();
+    // while !sio.fifo_valid() {  }
+    // let first_word = sio.read_fifo();
     // debug!("First word: {:0X}", first_word);
 
     use kernel::platform::sync::HardwareSyncAccess;

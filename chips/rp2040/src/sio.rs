@@ -21,17 +21,21 @@ impl FIFO {
     }
 
     pub fn handle_interrupt(&self) {
+        if self.sio.fifo_error() {
+            panic!("FIFO improperly used: {:#010X}", self.sio.fifo_state());
+        }
+
         if let Some(fifo_client) = self.client.extract() {
             while self.sio.fifo_valid() {
                 let data = self.sio.read_fifo();
                 fifo_client.data_received(data);
             }
         } else {
+            debug!("core{} discarding data from FIFO.",
+                   self.sio.get_processor() as u8);
             // Clear out FIFO, there's no client to receive the data.
             while self.sio.fifo_valid() {
                 let discarded_data = self.sio.read_fifo();
-                debug!("core{} discarding data from FIFO.",
-                       self.sio.get_processor() as u8);
             }
         }
     }

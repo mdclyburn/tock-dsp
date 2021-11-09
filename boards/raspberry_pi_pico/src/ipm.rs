@@ -1,20 +1,21 @@
 //! Interprocessor communication for ASPK.
 
+use kernel::debug;
 use kernel::hil::fifo::FIFOClient;
-use kernel::platform::interprocessor::{
-    InterprocessorMessenger,
-    MessageDispatcher,
-};
+use kernel::platform::interprocessor::InterprocessorMessenger;
 use kernel::utilities::cells::MapCell;
 use rp2040::chip::Processor;
 use rp2040::gpio::SIO;
 
 /// Messages processors can pass and receive.
+#[derive(Copy, Clone)]
 pub enum Message {
     /// Sending core has panicked.
     Panicked,
     /// Sending core has faulted.
     Faulted,
+    /// DSP core is online.
+    DSPRunning,
 }
 
 pub enum MessagingError {
@@ -24,22 +25,12 @@ pub enum MessagingError {
     Uninterpretable,
 }
 
-/// Size of the receiving buffer, the length of the hardware FIFO.
-const FIFO_BUFFER_LEN: usize = 32 * 4;
-
-/// Data reception state.
-#[derive(Copy, Clone)]
-enum MessagingState {
-    /// Awaiting the start of reception of new data.
-    Idle,
-    /// Accepting a message with a specific size.
-    Expecting(usize),
-}
+/// Size of the receiving buffer.
+const FIFO_BUFFER_LEN: usize = 2;
 
 /// Per-core messaging data.
 #[derive(Copy, Clone)]
 struct CoreData {
-    state: MessagingState,
     rx_buffer: [u32; FIFO_BUFFER_LEN],
     write_next: usize,
 }
@@ -53,7 +44,6 @@ pub struct ASPKMessaging {
 impl ASPKMessaging {
     pub fn new() -> ASPKMessaging {
         let data = CoreData {
-            state: MessagingState::Idle,
             rx_buffer: [0; FIFO_BUFFER_LEN],
             write_next: 0,
         };
@@ -72,36 +62,6 @@ impl ASPKMessaging {
     }
 }
 
-impl FIFOClient for ASPKMessaging {
-    type Publisher = rp2040::sio::FIFO;
-
-    fn data_received(&self, data: <Self::Publisher as kernel::hil::fifo::FIFO>::Data) {
-        let core_data = self.core_data();
-        core_data.map(|d| {
-            d.rx_buffer[d.write_next] = data;
-            d.write_next += 1;
-
-            match d.state {
-                MessagingState::Idle => {
-                    let expected_length = data & 0b0111_1111;
-                    // Length should always be greater than two because we use one word for the header.
-                    assert!(expected_length > 1);
-                    d.state = MessagingState::Expecting(expected_length as usize);
-                },
-
-                MessagingState::Expecting(len) => {
-                    // Try parsing it if the message is complete.
-                    if d.write_next == len {
-                        todo!("parse message");
-                        d.state = MessagingState::Idle;
-                        d.write_next = 0;
-                    }
-                },
-            }
-        });
-    }
-}
-
 impl InterprocessorMessenger for ASPKMessaging {
     type Identifier = Processor;
     type Message = Message;
@@ -111,24 +71,55 @@ impl InterprocessorMessenger for ASPKMessaging {
     fn id(&self) -> Self::Identifier { SIO::new().get_processor() }
 
     fn send(&self,
-            message: &Self::Message,
+            message: Self::Message,
             recipient: Self::Identifier)
             -> Result<(), Self::SendError>
     {
-        let sio = SIO::new();
-        unimplemented!()
+        use Message::*;
+        match message {
+            _ => unimplemented!(),
+        };
+    }
+
+    fn message_received(&self,
+                        from: Self::Identifier,
+                        message: Self::Message)
+    {
+        use Message::*;
+        match message {
+            Panicked => debug!("core{} panicked.", from as u8),
+            Faulted => debug!("core{} faulted.", from as u8),
+            DSPRunning => debug!("core{} is online.", from as u8),
+        }
     }
 }
 
-impl MessageDispatcher for ASPKMessaging {
-    type Messenger = Self;
+impl FIFOClient for ASPKMessaging {
+    type Publisher = rp2040::sio::FIFO;
 
-    fn on_message_received(&self,
-                           ipm: &Self::Messenger,
-                           from: <Self::Messenger as InterprocessorMessenger>::Identifier,
-                           message: &<Self::Messenger as InterprocessorMessenger>::Message)
-                           -> Result<(), <Self::Messenger as InterprocessorMessenger>::ReceiveError>
-    {
-        Err(MessagingError::Uninterpretable)
+    fn data_received(&self, data: <Self::Publisher as kernel::hil::fifo::FIFO>::Data) {
+        let core_data = self.core_data();
+        core_data.map(|d| {
+            d.rx_buffer[d.write_next] = data;
+            d.write_next += 1;
+
+            if d.write_next == 2 {
+                d.write_next = 0;
+
+                let (head, data) = (d.rx_buffer[0], d.rx_buffer[1]);
+                let other_core = match self.id() {
+                    Processor::Processor0 => Processor::Processor1,
+                    Processor::Processor1 => Processor::Processor0
+                };
+
+                match head {
+                    0 => self.message_received(other_core, Message::Faulted),
+                    1 => self.message_received(other_core, Message::Panicked),
+                    // 2 => self.message_received(other_core, Message::DSPRunning),
+                    _ => debug!("Message dropped (core{} → core{}): {:#010X} {:#010X}",
+                                other_core as u8, self.id() as u8, head, data),
+                };
+            }
+        });
     }
 }

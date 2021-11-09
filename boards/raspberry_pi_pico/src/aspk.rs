@@ -12,6 +12,7 @@ use rp2040::{
 };
 
 use crate::{RP2040Chip, RaspberryPiPico};
+use crate::ipm;
 use crate::sync;
 
 // Core1 stack space.
@@ -59,26 +60,17 @@ pub unsafe fn aspk_main() {
 
     let sio = SIO::new();
 
-    while !sio.fifo_ready() {  }
-    sio.write_fifo(0x41_53_50_4B);
     debug!("ASPK launched.");
-
     // The first three words from the other side are the kernel, board, and chip resources.
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
     debug!("ASPK received resources!");
 
-    unimplemented!();
-    let mut b = true;
+    use kernel::platform::KernelResources;
+    use kernel::platform::interprocessor::InterprocessorMessenger;
+    board_resources.interprocessor_communication().unwrap()
+        .send(ipm::Message::DSPRunning, rp2040::chip::Processor::Processor0);
     loop {
-        if b {
-            debug!("In the loop!");
-            b = false;
-        }
-        // debug!("ASPK running...");
-        // cortexm0p::support::wfe();
-        // while sio.fifo_valid() {
-        //     let _ = sio.read_fifo();
-        // }
+        cortexm0p::support::wfe();
     }
 }
 

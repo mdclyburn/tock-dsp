@@ -1042,6 +1042,19 @@ impl SIO {
         self.registers.fifo_st.read(FIFO_ST::RDY) == 1
     }
 
+    /// Returns the raw FIFO state.
+    #[inline]
+    pub fn fifo_state(&self) -> u32 {
+        self.registers.fifo_st.get()
+    }
+
+    /// Returns true if there is a FIFO usage error.
+    #[inline]
+    pub fn fifo_error(&self) -> bool {
+        let fifo_st = self.registers.fifo_st.get();
+        fifo_st & (FIFO_ST::ROE.mask << FIFO_ST::ROE.shift | FIFO_ST::WOF.mask << FIFO_ST::WOF.shift) != 0
+    }
+
     /// Attempt to claim a spinlock.
     ///
     /// This operation will return true if claiming the spinlock succeeded.
