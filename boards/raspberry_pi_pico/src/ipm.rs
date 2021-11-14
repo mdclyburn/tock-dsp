@@ -105,7 +105,7 @@ impl InterprocessorMessenger for ASPKMessaging {
 
     fn send(&self,
             message: Self::Message,
-            recipient: Self::Identifier)
+            _recipient: Self::Identifier)
             -> Result<(), Self::SendError>
     {
         let mut data = [0; 2];

@@ -43,7 +43,7 @@ impl<'a, I: InterruptService<()>> Rp2040<'a, I> {
             userspace_kernel_boundary: cortexm0p::syscall::SysCall::new(),
             interrupt_service,
             sio: sio,
-            processor0_interrupt_mask: interrupt_mask!(interrupts::SIO_IRQ_PROC1),
+            processor0_interrupt_mask: interrupt_mask!(interrupts::SIO_IRQ_PROC1, interrupts::ADC_IRQ_FIFO),
             processor1_interrupt_mask: interrupt_mask!(interrupts::SIO_IRQ_PROC0),
         }
     }

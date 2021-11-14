@@ -1,10 +1,13 @@
 #![allow(non_upper_case_globals)]
 
-use kernel::{
-    Kernel,
-    debug,
-};
+use core::cell::Cell;
+
 use cortexm0p::nvic;
+use kernel::Kernel;
+use kernel::debug;
+use kernel::hil;
+use kernel::utilities::cells::{NumericCellExt, TakeCell};
+use kernel::static_init;
 use rp2040::{
     self,
     gpio::SIO,
@@ -35,6 +38,7 @@ pub static mut CORE1_VECTORS: [usize; 16] = [0x0000_0000; 16];
 pub static mut CORE1_IRQS: [usize; 32] = [0x0000_0000; 32];
 
 #[no_mangle]
+#[allow(unreachable_code)]
 pub unsafe fn aspk_main() {
     rp2040::init();
 
@@ -65,8 +69,16 @@ pub unsafe fn aspk_main() {
 
     use kernel::platform::KernelResources;
     use kernel::platform::interprocessor::InterprocessorMessenger;
+
+    // DSP initialization.
+    let sink = static_init!(SignalSink, SignalSink::new());
+    use kernel::hil::adc::Adc;
+    board_resources.adc.set_client(sink);
+    board_resources.adc.sample_continuous(&rp2040::adc::Channel::Channel0, 44100*4);
+
     board_resources.interprocessor_communication().unwrap()
         .send(ipm::Message::DSPRunning, rp2040::chip::Processor::Processor0);
+
     loop {
         cortexm0p::support::wfe();
     }
@@ -111,4 +123,40 @@ unsafe fn ignored_interrupt() {
 #[allow(dead_code)]
 unsafe fn fail_interrupt() {
     loop { cortexm0p::support::wfe(); }
+}
+
+struct SignalSink {
+    samples: TakeCell<'static, [u16]>,
+    next: Cell<usize>,
+    dropped: Cell<usize>,
+}
+
+impl SignalSink {
+    const SAMPLE_SIZE: usize = 512;
+
+    unsafe fn new() -> SignalSink {
+        const SAMPLE_SIZE: usize = 512;
+        let buffer = kernel::static_buf!([u16; SAMPLE_SIZE]);
+        SignalSink {
+            samples: TakeCell::new(buffer.initialize([0; SAMPLE_SIZE])),
+            next: Cell::new(0),
+            dropped: Cell::new(0),
+        }
+    }
+
+    unsafe fn complete(&self) {
+        cortexm0p::support::atomic(|| self.next.set(0));
+    }
+}
+
+impl hil::adc::Client for SignalSink {
+    fn sample_ready(&self, sample: u16) {
+        let _: Option<_> = self.samples.map(|s| {
+            if self.next.get() < s.len() {
+                s[self.next.get_and_increment()] = sample;
+            } else {
+                // self.dropped.increment();
+            }
+        });
+    }
 }
