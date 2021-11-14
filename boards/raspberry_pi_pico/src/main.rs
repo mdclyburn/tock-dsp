@@ -356,7 +356,7 @@ pub unsafe fn main() {
 
     // RP2040 interprocessor FIFO messaging
     let aspk_messaging = static_init!(ipm::ASPKMessaging,
-                                      ipm::ASPKMessaging::new());
+                                      ipm::ASPKMessaging::new(&peripherals.fifo));
     use kernel::hil::fifo::FIFO;
     peripherals.fifo.set_client(aspk_messaging);
 

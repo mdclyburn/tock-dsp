@@ -60,10 +60,8 @@ pub unsafe fn aspk_main() {
 
     let sio = SIO::new();
 
-    debug!("ASPK launched.");
     // The first three words from the other side are the kernel, board, and chip resources.
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
-    debug!("ASPK received resources!");
 
     use kernel::platform::KernelResources;
     use kernel::platform::interprocessor::InterprocessorMessenger;

@@ -1,11 +1,14 @@
 //! Interprocessor communication for ASPK.
 
+use core::convert::TryFrom;
+
 use kernel::debug;
 use kernel::hil::fifo::FIFOClient;
 use kernel::platform::interprocessor::InterprocessorMessenger;
 use kernel::utilities::cells::MapCell;
 use rp2040::chip::Processor;
 use rp2040::gpio::SIO;
+use rp2040::sio::FIFO;
 
 /// Messages processors can pass and receive.
 #[derive(Copy, Clone)]
@@ -18,6 +21,34 @@ pub enum Message {
     DSPRunning,
 }
 
+impl Message {
+    fn serialize(&self, buffer: &mut [u32; 2]) {
+        use Message::*;
+        let (head, data) = match self {
+            Panicked => (0, 0),
+            Faulted => (1, 0),
+            DSPRunning => (2, 0),
+        };
+
+        buffer[0] = head;
+        buffer[1] = data;
+    }
+}
+
+impl TryFrom<&[u32; 2]> for Message {
+    type Error = MessagingError;
+
+    fn try_from(data: &[u32; 2]) -> Result<Message, Self::Error> {
+        match data[0] {
+            0 => Ok(Message::Faulted),
+            1 => Ok(Message::Panicked),
+            2 => Ok(Message::DSPRunning),
+            _ => Err(MessagingError::Uninterpretable),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum MessagingError {
     /// FIFO mailbox is full.
     Full,
@@ -37,18 +68,20 @@ struct CoreData {
 
 /// Interprocessor messaging for ASPK.
 pub struct ASPKMessaging {
+    fifo: &'static FIFO,
     core0_data: MapCell<CoreData>,
     core1_data: MapCell<CoreData>,
 }
 
 impl ASPKMessaging {
-    pub fn new() -> ASPKMessaging {
+    pub fn new(fifo: &'static FIFO) -> ASPKMessaging {
         let data = CoreData {
             rx_buffer: [0; FIFO_BUFFER_LEN],
             write_next: 0,
         };
 
         ASPKMessaging {
+            fifo,
             core0_data: MapCell::new(data),
             core1_data: MapCell::new(data),
         }
@@ -75,10 +108,13 @@ impl InterprocessorMessenger for ASPKMessaging {
             recipient: Self::Identifier)
             -> Result<(), Self::SendError>
     {
-        use Message::*;
-        match message {
-            _ => unimplemented!(),
-        };
+        let mut data = [0; 2];
+        message.serialize(&mut data);
+
+        use kernel::hil::fifo::FIFO;
+        self.fifo.write(data[0]);
+        self.fifo.write(data[1]);
+        Ok(())
     }
 
     fn message_received(&self,
@@ -112,12 +148,14 @@ impl FIFOClient for ASPKMessaging {
                     Processor::Processor1 => Processor::Processor0
                 };
 
-                match head {
-                    0 => self.message_received(other_core, Message::Faulted),
-                    1 => self.message_received(other_core, Message::Panicked),
-                    // 2 => self.message_received(other_core, Message::DSPRunning),
-                    _ => debug!("Message dropped (core{} → core{}): {:#010X} {:#010X}",
-                                other_core as u8, self.id() as u8, head, data),
+                match Message::try_from(&d.rx_buffer) {
+                    Ok(message) => self.message_received(other_core, message),
+                    Err(reason) => debug!("Message dropped (core{} → core{}): {:#010X} {:#010X} (reason: {:?})",
+                                          other_core as u8,
+                                          self.id() as u8,
+                                          head,
+                                          data,
+                                          reason),
                 };
             }
         });
