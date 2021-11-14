@@ -135,7 +135,11 @@ pub enum Channel {
 enum ADCStatus {
     Idle,
     OneSample,
+    Continuous,
 }
+
+/// Number of cycles required to produce a single sample.
+const SAMPLE_DURATION: usize = 96;
 
 pub struct Adc {
     registers: StaticRef<AdcRegisters>,
@@ -212,14 +216,43 @@ impl hil::adc::Adc for Adc {
 
     fn sample_continuous(
         &self,
-        _channel: &Self::Channel,
-        _frequency: u32,
+        channel: &Self::Channel,
+        frequency: u32,
     ) -> Result<(), ErrorCode> {
-        Err(ErrorCode::NOSUPPORT)
+        if self.status.get() == ADCStatus::Idle {
+            self.status.set(ADCStatus::Continuous);
+            self.channel.set(*channel);
+
+            // Assumption: sourcing a 48MHz clock.
+            // With a 48MHz clock, this maxes out at 500kS/s, as told by the datasheet.
+            let clock_freq = 48_000_000;
+            // Number of cycles each sample should take to achieve the sample frequency.
+            // Minimum possible is clock_freq / (2^16 + 1) = clock_freq / 65,536.
+            // Maximum possible is clock_freq / (0 + 1) = clock_freq.
+            // So we bound this between 95 and 65535 to achieve sampling every 96 to 65,536 cycles.
+            let cycles_per_sample = clock_freq / frequency;
+            let cycles_per_sample = if cycles_per_sample < 95 { 95 } else { cycles_per_sample };
+            let cycles_per_sample = if cycles_per_sample > u16::MAX as u32 { u16::MAX as u32 } else { cycles_per_sample };
+
+            self.registers.div.modify(DIV::INT.val(cycles_per_sample));
+            self.registers.cs.modify(CS::AINSEL.val(*channel as u32));
+            self.enable_interrupt();
+            self.registers.cs.modify(CS::START_MANY::SET);
+
+            Ok(())
+        } else {
+            Err(ErrorCode::BUSY)
+        }
     }
 
     fn stop_sampling(&self) -> Result<(), ErrorCode> {
-        Err(ErrorCode::NOSUPPORT)
+        self.registers.div.modify(DIV::INT::CLEAR);
+        self.registers.div.modify(DIV::FRAC::CLEAR);
+        self.registers.cs.modify(CS::START_MANY::CLEAR);
+        self.registers.fcs.modify(FCS::EN::CLEAR);
+        self.status.set(ADCStatus::Idle);
+
+        Ok(())
     }
 
     fn get_resolution_bits(&self) -> usize {
