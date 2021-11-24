@@ -4,6 +4,7 @@
 pub mod adc;
 pub mod chip;
 pub mod clocks;
+pub mod dma;
 pub mod gpio;
 pub mod interrupts;
 pub mod multicore;
