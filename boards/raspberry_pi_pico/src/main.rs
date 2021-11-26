@@ -74,7 +74,8 @@ pub struct RaspberryPiPico {
     alarm: &'static capsules::alarm::AlarmDriver<
         'static,
         VirtualMuxAlarm<'static, rp2040::timer::RPTimer<'static>>,
-    >,
+        >,
+    dma: &'static rp2040::dma::DMA,
     gpio: &'static capsules::gpio::GPIO<'static, RPGpioPin<'static>>,
     hw_sync_access: &'static sync::HardwareSyncBlockAccess,
     ipm: &'static ipm::ASPKMessaging,
@@ -381,7 +382,10 @@ pub unsafe fn main() {
         capsules::alarm::DRIVER_NUM,
         mux_alarm,
     )
-    .finalize(components::alarm_component_helper!(RPTimer));
+        .finalize(components::alarm_component_helper!(RPTimer));
+
+    // DMA
+    let dma = static_init!(rp2040::dma::DMA, rp2040::dma::DMA::new());
 
     // UART
     // Create a shared UART channel for kernel debug.
@@ -522,6 +526,7 @@ pub unsafe fn main() {
             &memory_allocation_capability,
         ),
         alarm,
+        dma,
         gpio,
         hw_sync_access,
         ipm: aspk_messaging,

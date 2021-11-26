@@ -37,6 +37,8 @@ pub static mut CORE1_VECTORS: [usize; 16] = [0x0000_0000; 16];
 #[link_section = ".core1_irqs"]
 pub static mut CORE1_IRQS: [usize; 32] = [0x0000_0000; 32];
 
+const AUDIO_SAMPLE_RATE: usize = 44_100;
+
 #[no_mangle]
 #[allow(unreachable_code)]
 pub unsafe fn aspk_main() {
@@ -56,12 +58,6 @@ pub unsafe fn aspk_main() {
         *irq = ignored_interrupt as usize;
     }
 
-    // let hw_sync_access = sync::HardwareSyncBlockAccess::new();
-    // let _sl = {
-    //     use kernel::platform::sync::HardwareSyncAccess;
-    //     hw_sync_access.access(true, |hsb| hsb.get_spinlock())
-    // };
-
     let sio = SIO::new();
 
     // The first three words from the other side are the kernel, board, and chip resources.
@@ -73,7 +69,6 @@ pub unsafe fn aspk_main() {
     // DSP initialization.
     let sink = static_init!(SignalSink, SignalSink::new());
     use kernel::hil::adc::Adc;
-    board_resources.adc.set_client(sink);
     board_resources.adc.sample_continuous(&rp2040::adc::Channel::Channel0, 44100*4);
 
     board_resources.interprocessor_communication().unwrap()
@@ -125,38 +120,21 @@ unsafe fn fail_interrupt() {
     loop { cortexm0p::support::wfe(); }
 }
 
+const SAMPLE_LEN_MS: usize = 20;
+const NO_SAMPLES: usize = (AUDIO_SAMPLE_RATE * SAMPLE_LEN_MS) / 1000;
+
 struct SignalSink {
-    samples: TakeCell<'static, [u16]>,
-    next: Cell<usize>,
-    dropped: Cell<usize>,
+    samples: [TakeCell<'static, [u16]>; 2],
+    dma_next: Cell<usize>,
 }
 
 impl SignalSink {
-    const SAMPLE_SIZE: usize = 512;
-
     unsafe fn new() -> SignalSink {
-        const SAMPLE_SIZE: usize = 512;
-        let buffer = kernel::static_buf!([u16; SAMPLE_SIZE]);
+        use kernel::static_buf;
         SignalSink {
-            samples: TakeCell::new(buffer.initialize([0; SAMPLE_SIZE])),
-            next: Cell::new(0),
-            dropped: Cell::new(0),
+            samples: [TakeCell::new(kernel::static_buf!([u16; NO_SAMPLES]).initialize([0; NO_SAMPLES])),
+                      TakeCell::new(kernel::static_buf!([u16; NO_SAMPLES]).initialize([0; NO_SAMPLES]))],
+            dma_next: Cell::new(0),
         }
-    }
-
-    unsafe fn complete(&self) {
-        cortexm0p::support::atomic(|| self.next.set(0));
-    }
-}
-
-impl hil::adc::Client for SignalSink {
-    fn sample_ready(&self, sample: u16) {
-        let _: Option<_> = self.samples.map(|s| {
-            if self.next.get() < s.len() {
-                s[self.next.get_and_increment()] = sample;
-            } else {
-                // self.dropped.increment();
-            }
-        });
     }
 }
