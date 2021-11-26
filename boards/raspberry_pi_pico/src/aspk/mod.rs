@@ -1,22 +1,14 @@
 #![allow(non_upper_case_globals)]
 
-use core::cell::Cell;
-
-use cortexm0p::nvic;
 use kernel::Kernel;
-use kernel::debug;
-use kernel::hil;
-use kernel::utilities::cells::{NumericCellExt, TakeCell};
-use kernel::static_init;
 use rp2040::{
     self,
     gpio::SIO,
-    interrupts,
 };
 
 use crate::{RP2040Chip, RaspberryPiPico};
-use crate::ipm;
-use crate::sync;
+
+mod core;
 
 // Core1 stack space.
 // Slightly reduced for vector and IRQs, aligned to 256 bytes.
@@ -62,21 +54,7 @@ pub unsafe fn aspk_main() {
 
     // The first three words from the other side are the kernel, board, and chip resources.
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
-
-    use kernel::platform::KernelResources;
-    use kernel::platform::interprocessor::InterprocessorMessenger;
-
-    // DSP initialization.
-    let sink = static_init!(SignalSink, SignalSink::new());
-    use kernel::hil::adc::Adc;
-    board_resources.adc.sample_continuous(&rp2040::adc::Channel::Channel0, 44100*4);
-
-    board_resources.interprocessor_communication().unwrap()
-        .send(ipm::Message::DSPRunning, rp2040::chip::Processor::Processor0);
-
-    loop {
-        cortexm0p::support::wfe();
-    }
+    core::start(kernel, board_resources, chip_resources);
 }
 
 #[inline(never)]
@@ -118,23 +96,4 @@ unsafe fn ignored_interrupt() {
 #[allow(dead_code)]
 unsafe fn fail_interrupt() {
     loop { cortexm0p::support::wfe(); }
-}
-
-const SAMPLE_LEN_MS: usize = 20;
-const NO_SAMPLES: usize = (AUDIO_SAMPLE_RATE * SAMPLE_LEN_MS) / 1000;
-
-struct SignalSink {
-    samples: [TakeCell<'static, [u16]>; 2],
-    dma_next: Cell<usize>,
-}
-
-impl SignalSink {
-    unsafe fn new() -> SignalSink {
-        use kernel::static_buf;
-        SignalSink {
-            samples: [TakeCell::new(kernel::static_buf!([u16; NO_SAMPLES]).initialize([0; NO_SAMPLES])),
-                      TakeCell::new(kernel::static_buf!([u16; NO_SAMPLES]).initialize([0; NO_SAMPLES]))],
-            dma_next: Cell::new(0),
-        }
-    }
 }

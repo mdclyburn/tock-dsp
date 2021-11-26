@@ -23,14 +23,12 @@ use kernel::syscall::SyscallDriver;
 use kernel::{capabilities, create_capability, static_init, Kernel};
 
 use rp2040;
-use rp2040::adc::{Adc, Channel};
 use rp2040::chip::{Rp2040, Rp2040DefaultPeripherals};
 use rp2040::clocks::{
     AdcAuxiliaryClockSource, PeripheralAuxiliaryClockSource, PllClock,
     ReferenceAuxiliaryClockSource, ReferenceClockSource, RtcAuxiliaryClockSource,
     SystemAuxiliaryClockSource, SystemClockSource, UsbAuxiliaryClockSource,
 };
-use rp2040::sio;
 use rp2040::gpio::{GpioFunction, RPGpio, RPGpioPin, SIO};
 use rp2040::multicore;
 use rp2040::psm::PowerOnStateMachine;
