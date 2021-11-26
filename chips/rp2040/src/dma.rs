@@ -2,6 +2,8 @@
 
 use core::cell::Cell;
 
+use cortexm0p::nvic::Nvic;
+
 use kernel::ErrorCode;
 use kernel::hil::dma::DMAClient;
 use kernel::utilities::StaticRef;
@@ -11,12 +13,10 @@ use kernel::utilities::registers::{
     register_structs,
     ReadOnly,
     ReadWrite,
-    WriteOnly,
 };
 use kernel::utilities::registers::interfaces::{
     Readable,
     Writeable,
-    ReadWriteable,
 };
 
 register_structs! {
@@ -49,6 +49,38 @@ register_structs! {
         (0x03c => al3_read_addr: ReadWrite<u32, READ_ADDR::Register>),
 
         (0x040 => @END),
+    },
+
+    Interrupts {
+        /// Interrupt status (raw).
+        (0x400 => intr: ReadOnly<u32, ()>),
+        /// Interrupt enablement for DMA_IRQ0.
+        (0x404 => inte0: ReadWrite<u32, ()>),
+        /// Force interrupts.
+        (0x408 => intf0: ReadWrite<u32, ()>),
+        /// Interrupt status for DMA_IRQ0.
+        (0x40c => ints0: ReadWrite<u32, ()>),
+
+        (0x410 => _reserved0),
+
+        /// Interrupt enablement for DMA_IRQ1.
+        (0x414 => inte1: ReadWrite<u32, ()>),
+        /// Force interrupts.
+        (0x418 => intf1: ReadWrite<u32, ()>),
+        /// Interrupt status for DMA_IRQ0.
+        (0x41c => ints1: ReadWrite<u32, ()>),
+
+        (0x420 => @END),
+    },
+
+    /// Pacing fractional timers.
+    Timers {
+        (0x420 => timer0: ReadWrite<u32, TIMER::Register>),
+        (0x424 => timer1: ReadWrite<u32, TIMER::Register>),
+        (0x428 => timer2: ReadWrite<u32, TIMER::Register>),
+        (0x42c => timer3: ReadWrite<u32, TIMER::Register>),
+
+        (0x430 => @END),
     }
 }
 
@@ -151,8 +183,15 @@ register_bitfields! [
             Disable = 0,
         ],
     ],
+
+    // Fractional [(X/Y) * SYS_CLK] pacing timers.
+    TIMER [
+        X OFFSET(16) NUMBITS(16) [],
+        Y OFFSET(0) NUMBITS(16) [],
+    ],
 ];
 
+/// Trigger signal for a DMA channel.
 #[derive(Copy, Clone)]
 #[repr(u32)]
 #[allow(non_camel_case_types)]
@@ -215,18 +254,35 @@ pub enum TransferRequestSignal {
     PERMANENT_REQUEST = 0x3F
 }
 
+/// Whether to wrap writes or to wrap reads.
 pub enum TransferAddressWrap {
     None,
     Read(u8),
     Write(u8),
 }
 
+/// Size of each DMA transfer operation (32-bit architecture).
 #[derive(Copy, Clone)]
 #[repr(u32)]
 pub enum TransferSize {
+    /// One byte.
     Byte = 0,
+    /// Two bytes.
     HalfWord = 1,
+    /// Four bytes.
     Word = 2,
+}
+
+/// NVIC IRQ line.
+///
+/// The RP2040 contains two interrupt lines for DMA interrupts,
+/// `DMA_IRQ0` and `DMA_IRQ1`.
+/// The exact usage of these two lines is left to software.
+#[derive(Copy, Clone)]
+#[allow(non_camel_case_types)]
+pub enum InterruptLine {
+    IRQ0,
+    IRQ1
 }
 
 const DMA_BASE_ADDRESS: usize = 0x5000_0000;
@@ -239,27 +295,46 @@ struct ChannelConfiguration {
     transfer_client: &'static dyn DMAClient,
 }
 
+/// Configurable parameters for DMA channels.
 pub struct ChannelOptions {
+    /// Address to transfer data from.
     pub read_address: u32,
+    /// Address to transfer data to.
     pub write_address: u32,
+    /// Number of transfers to perform.
     pub transfer_count: u32,
+    /// Size of each transfer.
     pub transfer_size: TransferSize,
+    /// Transfer initiation signal.
     pub treq_signal: TransferRequestSignal,
+    /// Transfer source or destination address wrapping.
     pub ring_config: TransferAddressWrap,
+    /// Increase read address by `transfer_size` after each transfer.
     pub increment_on_read: bool,
+    /// Increase write address by `transfer_size` after each transfer.
     pub increment_on_write: bool,
+    /// Service this channel before non-high priority channels.
     pub high_priority: bool,
+    /// Pass interrupts from a channel to a DMA IRQ line.
+    pub irq_line: Option<InterruptLine>,
 }
 
+/// DMA peripheral interface.
 pub struct DMA {
-    registers: StaticRef<[DMAChannel; 12]>,
+    channel_registers: StaticRef<[DMAChannel; 12]>,
+    interrupt_registers: StaticRef<Interrupts>,
     configs: [OptionalCell<ChannelConfiguration>; 12],
 }
 
 impl DMA {
+    /// Create a new DMA peripheral interface.
+    ///
+    /// Because this type contains state information about configured DMA channels,
+    /// there should only ever be one instance of this type.
     pub unsafe fn new() -> DMA {
         DMA {
-            registers: DMA_CHANNELS,
+            channel_registers: DMA_CHANNELS,
+            interrupt_registers: StaticRef::new(DMA_BASE_ADDRESS as *const Interrupts),
             configs: [OptionalCell::empty(),
                       OptionalCell::empty(),
                       OptionalCell::empty(),
@@ -275,12 +350,24 @@ impl DMA {
         }
     }
 
+    /// Enable DMA interrupts.
+    pub fn enable_interrupt(&self, line: InterruptLine) {
+        let irq_no = match line {
+            InterruptLine::IRQ0 => crate::interrupts::DMA_IRQ_0,
+            InterruptLine::IRQ1 => crate::interrupts::DMA_IRQ_1,
+        };
+        unsafe { Nvic::new(irq_no) }.enable();
+    }
+
+    /// Set up a DMA channel.
+    ///
+    /// Returns the number of the channel that was configured.
     pub fn configure(
         &self,
         client: &'static dyn DMAClient,
         buffer: &'static mut [usize],
         options: &ChannelOptions,
-    ) -> Result<(), ErrorCode>
+    ) -> Result<usize, ErrorCode>
     {
         for idx in 0..12 {
             if self.configs[idx].is_none() {
@@ -291,9 +378,18 @@ impl DMA {
                     }
                 );
 
-                self.registers[idx].read_addr.set(options.read_address);
-                self.registers[idx].write_addr.set(options.write_address);
-                self.registers[idx].trans_count.set(options.transfer_count);
+                if let Some(irq_line) = options.irq_line {
+                    let mask = 1 << idx;
+                    let inte = match irq_line {
+                        InterruptLine::IRQ0 => &self.interrupt_registers.inte0,
+                        InterruptLine::IRQ1 => &self.interrupt_registers.inte1,
+                    };
+                    inte.set(inte.get() | mask);
+                }
+
+                self.channel_registers[idx].read_addr.set(options.read_address);
+                self.channel_registers[idx].write_addr.set(options.write_address);
+                self.channel_registers[idx].trans_count.set(options.transfer_count);
 
                 let (ring_sel, ring_size) = match options.ring_config {
                     TransferAddressWrap::None => (0, 0),
@@ -311,9 +407,9 @@ impl DMA {
                     | CTRL::HIGH_PRIORITY.val(if options.high_priority { 1 } else { 0 }).value
                     | 1;
 
-                self.registers[idx].ctrl.set(ctrl);
+                self.channel_registers[idx].ctrl.set(ctrl);
 
-                return Ok(());
+                return Ok(idx);
             }
         }
 
