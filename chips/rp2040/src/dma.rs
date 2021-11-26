@@ -239,6 +239,18 @@ struct ChannelConfiguration {
     transfer_client: &'static dyn DMAClient,
 }
 
+pub struct ChannelOptions {
+    pub read_address: u32,
+    pub write_address: u32,
+    pub transfer_count: u32,
+    pub transfer_size: TransferSize,
+    pub treq_signal: TransferRequestSignal,
+    pub ring_config: TransferAddressWrap,
+    pub increment_on_read: bool,
+    pub increment_on_write: bool,
+    pub high_priority: bool,
+}
+
 pub struct DMA {
     registers: StaticRef<[DMAChannel; 12]>,
     configs: [OptionalCell<ChannelConfiguration>; 12],
@@ -267,18 +279,10 @@ impl DMA {
         &self,
         client: &'static dyn DMAClient,
         buffer: &'static mut [usize],
-        read_address: u32,
-        write_address: u32,
-        transfer_count: u32,
-        treq: TransferRequestSignal,
-        ring_config: TransferAddressWrap,
-        increment_read: bool,
-        increment_write: bool,
-        transfer_size: TransferSize,
-        high_priority: bool,
+        options: &ChannelOptions,
     ) -> Result<(), ErrorCode>
     {
-        for idx in (0..12) {
+        for idx in 0..12 {
             if self.configs[idx].is_none() {
                 self.configs[idx].set(
                     ChannelConfiguration {
@@ -287,24 +291,24 @@ impl DMA {
                     }
                 );
 
-                self.registers[idx].read_addr.set(read_address);
-                self.registers[idx].write_addr.set(write_address);
-                self.registers[idx].trans_count.set(transfer_count);
+                self.registers[idx].read_addr.set(options.read_address);
+                self.registers[idx].write_addr.set(options.write_address);
+                self.registers[idx].trans_count.set(options.transfer_count);
 
-                let (ring_sel, ring_size) = match ring_config {
+                let (ring_sel, ring_size) = match options.ring_config {
                     TransferAddressWrap::None => (0, 0),
                     TransferAddressWrap::Read(size) => (0, size),
                     TransferAddressWrap::Write(size) => (1, size),
                 };
 
                 let ctrl =
-                    CTRL::TREQ_SEL.val(treq as u32).value
+                    CTRL::TREQ_SEL.val(options.treq_signal as u32).value
                     | CTRL::RING_SEL.val(ring_sel).value
                     | CTRL::RING_SIZE.val(ring_size as u32).value
-                    | CTRL::INCR_WRITE.val(if increment_write { 1 } else { 0 }).value
-                    | CTRL::INCR_READ.val(if increment_read { 1 } else { 0 }).value
-                    | CTRL::DATA_SIZE.val(transfer_size as u32).value
-                    | CTRL::HIGH_PRIORITY.val(if high_priority { 1 } else { 0 }).value
+                    | CTRL::INCR_WRITE.val(if options.increment_on_write { 1 } else { 0 }).value
+                    | CTRL::INCR_READ.val(if options.increment_on_read { 1 } else { 0 }).value
+                    | CTRL::DATA_SIZE.val(options.transfer_size as u32).value
+                    | CTRL::HIGH_PRIORITY.val(if options.high_priority { 1 } else { 0 }).value
                     | 1;
 
                 self.registers[idx].ctrl.set(ctrl);
