@@ -1,6 +1,7 @@
 #![allow(non_upper_case_globals)]
 
-use kernel::Kernel;
+use ::kernel as tock_kernel;
+use tock_kernel::Kernel;
 use rp2040::{
     self,
     gpio::SIO,
@@ -8,7 +9,7 @@ use rp2040::{
 
 use crate::{RP2040Chip, RaspberryPiPico};
 
-mod core;
+mod kernel;
 
 // Core1 stack space.
 // Slightly reduced for vector and IRQs, aligned to 256 bytes.
@@ -54,7 +55,7 @@ pub unsafe fn aspk_main() {
 
     // The first three words from the other side are the kernel, board, and chip resources.
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
-    core::start(kernel, board_resources, chip_resources);
+    kernel::start(kernel, board_resources, chip_resources);
 }
 
 #[inline(never)]
