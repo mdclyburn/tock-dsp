@@ -268,12 +268,12 @@ unsafe fn initialize_multicore(kernel: &Kernel,
     sio.disable_interrupt();
 
     let (core1_vectors, core1_sp, core1_entry) =
-        (aspk::CORE1_VECTORS.as_ptr() as usize,
+        (aspk::VECTORS.as_ptr() as usize,
          (&aspk::_core1_estack as *const u8) as usize,
-         (aspk::aspk_main as *const fn()) as usize);
+         (aspk::launch as *const fn()) as usize);
     // May be useful to know later.
-    aspk::CORE1_VECTORS[0] = core1_sp;
-    aspk::CORE1_VECTORS[1] = core1_entry;
+    aspk::VECTORS[0] = core1_sp;
+    aspk::VECTORS[1] = core1_entry;
 
     debug!("Launching core1. VTOR: {:#X}, SP: {:#X}, IP: {:#X}",
            core1_vectors, core1_sp, core1_entry);

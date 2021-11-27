@@ -292,7 +292,7 @@ const DMA_CHANNELS: StaticRef<[DMAChannel; 12]> = unsafe {
 
 struct ChannelConfiguration {
     buffer: TakeCell<'static, [usize]>,
-    transfer_client: &'static dyn DMAClient,
+    transfer_client: Option<&'static dyn DMAClient>,
 }
 
 /// Configurable parameters for DMA channels.
@@ -364,7 +364,7 @@ impl DMA {
     /// Returns the number of the channel that was configured.
     pub fn configure(
         &self,
-        client: &'static dyn DMAClient,
+        client: Option<&'static dyn DMAClient>,
         buffer: &'static mut [usize],
         options: &ChannelOptions,
     ) -> Result<usize, ErrorCode>
@@ -406,6 +406,10 @@ impl DMA {
                     | CTRL::DATA_SIZE.val(options.transfer_size as u32).value
                     | CTRL::HIGH_PRIORITY.val(if options.high_priority { 1 } else { 0 }).value
                     | 1;
+
+                if let Some(irq_line) = options.irq_line {
+                    self.enable_interrupt(irq_line);
+                }
 
                 self.channel_registers[idx].ctrl.set(ctrl);
 
