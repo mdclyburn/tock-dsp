@@ -11,6 +11,7 @@ use core::ptr::NonNull;
 use crate::capabilities;
 use crate::config;
 use crate::debug;
+use crate::dsp::ASPK;
 use crate::dynamic_deferred_call::DynamicDeferredCall;
 use crate::errorcode::ErrorCode;
 use crate::grant::Grant;
@@ -476,6 +477,16 @@ impl Kernel {
         loop {
             self.kernel_loop_operation(resources, chip, ipc, false, capability);
         }
+    }
+
+    pub fn dsp_loop<C: Chip, R: KernelResources<C>>(
+        &self,
+        resources: &R,
+        chip: &C,
+        dsp: &ASPK,
+    ) -> !
+    {
+        dsp.run(chip, resources);
     }
 
     /// Transfer control from the kernel to a userspace process.

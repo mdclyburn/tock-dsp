@@ -1,5 +1,4 @@
 mod interrupt;
-mod kernel;
 mod startup;
 
 pub use interrupt::VECTORS;

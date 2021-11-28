@@ -5,7 +5,7 @@ use core::cell::Cell;
 use cortexm0p::nvic::Nvic;
 
 use kernel::ErrorCode;
-use kernel::hil::dma::DMAClient;
+use kernel::hil;
 use kernel::utilities::StaticRef;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::{
@@ -254,25 +254,6 @@ pub enum TransferRequestSignal {
     PERMANENT_REQUEST = 0x3F
 }
 
-/// Whether to wrap writes or to wrap reads.
-pub enum TransferAddressWrap {
-    None,
-    Read(u8),
-    Write(u8),
-}
-
-/// Size of each DMA transfer operation (32-bit architecture).
-#[derive(Copy, Clone)]
-#[repr(u32)]
-pub enum TransferSize {
-    /// One byte.
-    Byte = 0,
-    /// Two bytes.
-    HalfWord = 1,
-    /// Four bytes.
-    Word = 2,
-}
-
 /// NVIC IRQ line.
 ///
 /// The RP2040 contains two interrupt lines for DMA interrupts,
@@ -290,40 +271,11 @@ const DMA_CHANNELS: StaticRef<[DMAChannel; 12]> = unsafe {
     StaticRef::new(DMA_BASE_ADDRESS as *const [DMAChannel; 12])
 };
 
-struct ChannelConfiguration {
-    buffer: TakeCell<'static, [usize]>,
-    transfer_client: Option<&'static dyn DMAClient>,
-}
-
-/// Configurable parameters for DMA channels.
-pub struct ChannelOptions {
-    /// Address to transfer data from.
-    pub read_address: u32,
-    /// Address to transfer data to.
-    pub write_address: u32,
-    /// Number of transfers to perform.
-    pub transfer_count: u32,
-    /// Size of each transfer.
-    pub transfer_size: TransferSize,
-    /// Transfer initiation signal.
-    pub treq_signal: TransferRequestSignal,
-    /// Transfer source or destination address wrapping.
-    pub ring_config: TransferAddressWrap,
-    /// Increase read address by `transfer_size` after each transfer.
-    pub increment_on_read: bool,
-    /// Increase write address by `transfer_size` after each transfer.
-    pub increment_on_write: bool,
-    /// Service this channel before non-high priority channels.
-    pub high_priority: bool,
-    /// Pass interrupts from a channel to a DMA IRQ line.
-    pub irq_line: Option<InterruptLine>,
-}
-
 /// DMA peripheral interface.
 pub struct DMA {
     channel_registers: StaticRef<[DMAChannel; 12]>,
     interrupt_registers: StaticRef<Interrupts>,
-    configs: [OptionalCell<ChannelConfiguration>; 12],
+    configs: [OptionalCell<hil::dma::ChannelConfiguration>; 12],
 }
 
 impl DMA {
@@ -364,41 +316,54 @@ impl DMA {
     /// Returns the number of the channel that was configured.
     pub fn configure(
         &self,
-        client: Option<&'static dyn DMAClient>,
+        client: Option<&'static dyn hil::dma::DMAClient>,
         buffer: &'static mut [usize],
-        options: &ChannelOptions,
+        options: &hil::dma::Parameters,
     ) -> Result<usize, ErrorCode>
     {
         for idx in 0..12 {
             if self.configs[idx].is_none() {
-                self.configs[idx].set(
-                    ChannelConfiguration {
-                        buffer: TakeCell::new(buffer),
-                        transfer_client: client,
+                self.configs[idx].set(hil::dma::ChannelConfiguration::new(buffer, client));
+
+                let mask = 1 << idx;
+                self.interrupt_registers.inte0.set(self.interrupt_registers.inte0.get() | mask);
+                self.interrupt_registers.inte1.set(self.interrupt_registers.inte1.get() | mask);
+
+                let (read_addr, write_addr) = {
+                    use hil::dma::TransferKind;
+
+                    match options.kind {
+                        TransferKind::MemoryToMemory(ra, wa) => (ra, wa),
+                        TransferKind::MemoryToPeripheral(ra, p) => unimplemented!(),
+                        TransferKind::PeripheralToMemory(p, wa) => (peripheral_source_address(p), wa),
                     }
-                );
+                };
 
-                if let Some(irq_line) = options.irq_line {
-                    let mask = 1 << idx;
-                    let inte = match irq_line {
-                        InterruptLine::IRQ0 => &self.interrupt_registers.inte0,
-                        InterruptLine::IRQ1 => &self.interrupt_registers.inte1,
-                    };
-                    inte.set(inte.get() | mask);
-                }
+                self.channel_registers[idx].read_addr.set(read_addr as u32);
+                self.channel_registers[idx].write_addr.set(write_addr as u32);
+                self.channel_registers[idx].trans_count.set(options.transfer_count as u32);
 
-                self.channel_registers[idx].read_addr.set(options.read_address);
-                self.channel_registers[idx].write_addr.set(options.write_address);
-                self.channel_registers[idx].trans_count.set(options.transfer_count);
+                // No support for wrapping in HIL.
+                let (ring_sel, ring_size) = (0, 0);
 
-                let (ring_sel, ring_size) = match options.ring_config {
-                    TransferAddressWrap::None => (0, 0),
-                    TransferAddressWrap::Read(size) => (0, size),
-                    TransferAddressWrap::Write(size) => (1, size),
+                // Translate a peripheral source to an RP2040 DMA TREQ signal source.
+                let treq_signal = {
+                    use hil::dma::TransferKind;
+                    use hil::dma::SourcePeripheral;
+
+                    if let TransferKind::PeripheralToMemory(source_peripheral, _write_addr) = options.kind {
+                        match source_peripheral {
+                            SourcePeripheral::ADC => TransferRequestSignal::ADC as u32,
+                            _ => panic!("Unhandled DMA source peripheral."),
+                        }
+                    } else {
+                        // Transfer proceeds as fast as possible.
+                        TransferRequestSignal::PERMANENT_REQUEST as u32
+                    }
                 };
 
                 let ctrl =
-                    CTRL::TREQ_SEL.val(options.treq_signal as u32).value
+                    CTRL::TREQ_SEL.val(treq_signal as u32).value
                     | CTRL::RING_SEL.val(ring_sel).value
                     | CTRL::RING_SIZE.val(ring_size as u32).value
                     | CTRL::INCR_WRITE.val(if options.increment_on_write { 1 } else { 0 }).value
@@ -407,9 +372,8 @@ impl DMA {
                     | CTRL::HIGH_PRIORITY.val(if options.high_priority { 1 } else { 0 }).value
                     | 1;
 
-                if let Some(irq_line) = options.irq_line {
-                    self.enable_interrupt(irq_line);
-                }
+                // Hard-code to use DMA_IRQ0 since HIL does not have an equivalent distinction.
+                self.enable_interrupt(InterruptLine::IRQ0);
 
                 self.channel_registers[idx].ctrl.set(ctrl);
 
@@ -418,5 +382,11 @@ impl DMA {
         }
 
         Err(ErrorCode::BUSY)
+    }
+}
+
+const fn peripheral_source_address(p: hil::dma::SourcePeripheral) -> usize {
+    match p {
+        hil::dma::SourcePeripheral::ADC => 0x4004_C004,
     }
 }

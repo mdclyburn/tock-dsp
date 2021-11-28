@@ -48,3 +48,18 @@ pub(crate) const CONFIG: Config = Config {
     trace_syscalls: false,
     debug_load_processes: false,
 };
+
+/// Samples per second ASPK will collect in one second.
+pub(crate) const SAMPLING_RATE: usize = 44_100 * 4;
+/// How many milliseconds worth of samples ASPK will collect.
+pub(crate) const BUFFER_LEN_MS: usize = 20;
+/// Number of samples ASPK will collect to fulfill both `SAMPLING_RATE` and `BUFFER_LEN_MS`.
+pub(crate) const NO_SAMPLES: usize = SAMPLING_RATE * BUFFER_LEN_MS / 1000;
+
+/// Number of buffers ASPK will collect samples in.
+///
+/// This should always be at least 3:
+/// - collect ADC samples with one buffer
+/// - process collected samples with one buffer
+/// - output processed samples with one buffer.
+pub(crate) const SAMPLE_BUFFERS: usize = 3;
