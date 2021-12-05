@@ -8,6 +8,10 @@ use rp2040::gpio::SIO;
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::interrupt;
 
+/// Start ASPK.
+///
+/// Entry point for executing ASPK.
+/// Receives resource information from core0 and begins executing the DSP loop.
 #[no_mangle]
 #[allow(unreachable_code)]
 pub unsafe fn launch() -> ! {
@@ -19,8 +23,13 @@ pub unsafe fn launch() -> ! {
     // The first three words from the other side are the kernel, board, and chip resources.
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
 
+    // ASPK runtime context
     let aspk = static_init!(ASPK, ASPK::new());
-    kernel.dsp_loop(board_resources, chip_resources, aspk);
+
+    kernel.dsp_loop(board_resources,
+                    chip_resources,
+                    aspk,
+                    board_resources.dma);
 }
 
 #[inline(never)]

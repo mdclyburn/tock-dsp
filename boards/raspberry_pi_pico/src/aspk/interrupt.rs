@@ -1,8 +1,5 @@
 //! Interrupt servicing.
 
-#![feature(asm)]
-#![feature(naked_functions)]
-
 use cortexm0p;
 
 /// Core1 vector addresses.
@@ -15,6 +12,7 @@ pub static mut VECTORS: [usize; 16] = [0x0000_0000; 16];
 #[link_section = ".core1_irqs"]
 pub static mut IRQS: [usize; 32] = [0x0000_0000; 32];
 
+/// Provide an initial configuration for all interrupts and exceptions.
 pub unsafe fn configure() {
     // Initialize all vectors and IRQ handlers to something.
     // Skip the first two since that is the initial stack

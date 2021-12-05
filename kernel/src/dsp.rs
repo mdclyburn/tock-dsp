@@ -3,6 +3,7 @@
 use core::cell::Cell;
 
 use crate::config;
+use crate::hil::dma::DMA;
 use crate::static_buf;
 use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
@@ -61,10 +62,16 @@ impl ASPK {
     }
 
     /// Run the digital signal processing loop.
+    ///
+    /// Performs initial configuration and starts the DSP loop.
+    /// Once configured, the DSP side of the kernel will respond to a short list of interrupts:
+    /// SIO, for interprocessor messaging;
+    /// DMA, for sample processing.
     pub fn run<C: Chip, R: KernelResources<C>>(
         &self,
         chip: &C,
         resources: &R,
+        dma: &'static dyn DMA,
     ) -> !
     {
         // Start the loop process by passing the first buffer to the DMA collecting samples from the ADC.

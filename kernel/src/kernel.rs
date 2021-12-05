@@ -16,6 +16,7 @@ use crate::dynamic_deferred_call::DynamicDeferredCall;
 use crate::errorcode::ErrorCode;
 use crate::grant::Grant;
 use crate::ipc;
+use crate::hil;
 use crate::memop;
 use crate::platform::chip::Chip;
 use crate::platform::mpu::MPU;
@@ -484,9 +485,10 @@ impl Kernel {
         resources: &R,
         chip: &C,
         dsp: &ASPK,
+        dma: &'static dyn hil::dma::DMA,
     ) -> !
     {
-        dsp.run(chip, resources);
+        dsp.run(chip, resources, dma);
     }
 
     /// Transfer control from the kernel to a userspace process.

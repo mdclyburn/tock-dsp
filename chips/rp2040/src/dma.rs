@@ -7,7 +7,7 @@ use cortexm0p::nvic::Nvic;
 use kernel::ErrorCode;
 use kernel::hil;
 use kernel::utilities::StaticRef;
-use kernel::utilities::cells::{OptionalCell, TakeCell};
+use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use kernel::utilities::registers::{
     register_bitfields,
     register_structs,
@@ -17,6 +17,7 @@ use kernel::utilities::registers::{
 use kernel::utilities::registers::interfaces::{
     Readable,
     Writeable,
+    ReadWriteable,
 };
 
 register_structs! {
@@ -271,11 +272,62 @@ const DMA_CHANNELS: StaticRef<[DMAChannel; 12]> = unsafe {
     StaticRef::new(DMA_BASE_ADDRESS as *const [DMAChannel; 12])
 };
 
+/// Single, configured DMA channel.
+pub struct Channel {
+    channel_register: StaticRef<DMAChannel>,
+    buffer: TakeCell<'static, [usize]>,
+    config: MapCell<hil::dma::Parameters>,
+}
+
+impl Channel {
+    unsafe fn unconfigured(channel_no: usize) -> Channel {
+        Channel {
+            channel_register: StaticRef::new((DMA_BASE_ADDRESS as *const DMAChannel).offset(channel_no as isize)),
+            buffer: TakeCell::empty(),
+            config: MapCell::empty(),
+        }
+    }
+}
+
+impl hil::dma::DMAChannel for Channel {
+    fn start(&self, buffer: &'static mut [usize]) -> Result<(), ErrorCode> {
+        let (len_required, kind) = self.config.map(|c| {
+            (c.transfer_count * c.transfer_size as usize,
+             c.kind)
+        }).unwrap(); // It should not be possible to have a DMA channel that is unconfigured.
+
+        // If we have a buffer here, the channel is busy reading from/writing to it.
+        // Check the buffer size to ensure the amount of data we'll be transferring from/to
+        // it will not exceed the buffer's size.
+        if self.buffer.is_some() {
+            Err(ErrorCode::BUSY)
+        } else if buffer.len() >= len_required {
+            Err(ErrorCode::NOMEM)
+        } else {
+            // We only support memory-peripheral or peripheral-memory transfers here for now.
+            // For memory-memory, we cannot discern whether this new buffer replaces
+            // the source buffer or the destination buffer.
+            use hil::dma::TransferKind::*;
+            let addr = buffer.as_ptr();
+            let channel_register = &self.channel_register;
+            match kind {
+                MemoryToPeripheral(_ra, _p) => channel_register.read_addr.set(addr as u32),
+                PeripheralToMemory(_p, _wa) => channel_register.write_addr.set(addr as u32),
+                _ => return Err(ErrorCode::NOSUPPORT)
+            };
+
+            self.buffer.put(Some(buffer));
+            self.channel_register.ctrl.modify(CTRL::EN::Enable);
+            Ok(())
+        }
+    }
+}
+
 /// DMA peripheral interface.
 pub struct DMA {
     channel_registers: StaticRef<[DMAChannel; 12]>,
     interrupt_registers: StaticRef<Interrupts>,
-    configs: [OptionalCell<hil::dma::ChannelConfiguration>; 12],
+    configs: [Channel; 12],
 }
 
 impl DMA {
@@ -287,18 +339,18 @@ impl DMA {
         DMA {
             channel_registers: DMA_CHANNELS,
             interrupt_registers: StaticRef::new(DMA_BASE_ADDRESS as *const Interrupts),
-            configs: [OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty(),
-                      OptionalCell::empty()],
+            configs: [Channel::unconfigured(0),
+                      Channel::unconfigured(1),
+                      Channel::unconfigured(2),
+                      Channel::unconfigured(3),
+                      Channel::unconfigured(4),
+                      Channel::unconfigured(5),
+                      Channel::unconfigured(6),
+                      Channel::unconfigured(7),
+                      Channel::unconfigured(8),
+                      Channel::unconfigured(9),
+                      Channel::unconfigured(10),
+                      Channel::unconfigured(11)],
         }
     }
 
@@ -315,16 +367,13 @@ impl DMA {
     ///
     /// Returns the number of the channel that was configured.
     pub fn configure(
-        &self,
+        &'static self,
         client: Option<&'static dyn hil::dma::DMAClient>,
-        buffer: &'static mut [usize],
         options: &hil::dma::Parameters,
-    ) -> Result<usize, ErrorCode>
+    ) -> Result<&'static dyn hil::dma::DMAChannel, ErrorCode>
     {
         for idx in 0..12 {
-            if self.configs[idx].is_none() {
-                self.configs[idx].set(hil::dma::ChannelConfiguration::new(buffer, client));
-
+            if self.configs[idx].config.is_none() {
                 let mask = 1 << idx;
                 self.interrupt_registers.inte0.set(self.interrupt_registers.inte0.get() | mask);
                 self.interrupt_registers.inte1.set(self.interrupt_registers.inte1.get() | mask);
@@ -369,19 +418,34 @@ impl DMA {
                     | CTRL::INCR_WRITE.val(if options.increment_on_write { 1 } else { 0 }).value
                     | CTRL::INCR_READ.val(if options.increment_on_read { 1 } else { 0 }).value
                     | CTRL::DATA_SIZE.val(options.transfer_size as u32).value
-                    | CTRL::HIGH_PRIORITY.val(if options.high_priority { 1 } else { 0 }).value
-                    | 1;
+                    | CTRL::HIGH_PRIORITY.val(if options.high_priority { 1 } else { 0 }).value;
 
                 // Hard-code to use DMA_IRQ0 since HIL does not have an equivalent distinction.
                 self.enable_interrupt(InterruptLine::IRQ0);
 
                 self.channel_registers[idx].ctrl.set(ctrl);
 
-                return Ok(idx);
+                self.configs[idx].config.put(*options);
+
+                return Ok(&self.configs[idx]);
             }
         }
 
         Err(ErrorCode::BUSY)
+    }
+}
+
+impl hil::dma::DMA for DMA {
+    fn configure(&'static self,
+                 client: Option<&'static dyn hil::dma::DMAClient>,
+                 params: &hil::dma::Parameters)
+                 -> Result<&'static dyn hil::dma::DMAChannel, ErrorCode>
+    {
+        self.configure(client, params)
+    }
+
+    fn stop(&'static self, channel_no: usize) -> Result<(), ErrorCode> {
+        Err(ErrorCode::NOSUPPORT)
     }
 }
 

@@ -8,11 +8,11 @@ use crate::utilities::cells::TakeCell;
 #[repr(u32)]
 pub enum TransferSize {
     /// One byte.
-    Byte,
+    Byte = 1,
     /// Two bytes.
-    HalfWord,
+    HalfWord = 2,
     /// Four bytes.
-    Word,
+    Word = 4,
 }
 
 #[derive(Copy, Clone)]
@@ -35,6 +35,7 @@ pub enum TransferKind {
 }
 
 /// Configurable parameters for DMA channels.
+#[derive(Copy, Clone)]
 pub struct Parameters {
     /// Transfer source and target.
     pub kind: TransferKind,
@@ -50,28 +51,19 @@ pub struct Parameters {
     pub high_priority: bool,
 }
 
-pub struct ChannelConfiguration {
-    buffer: TakeCell<'static, [usize]>,
-    transfer_client: Option<&'static dyn DMAClient>,
-}
-
-impl ChannelConfiguration {
-    pub fn new(buffer: &'static mut [usize],
-               client: Option<&'static dyn DMAClient>) -> ChannelConfiguration
-    {
-        ChannelConfiguration {
-            buffer: TakeCell::new(buffer),
-            transfer_client: client,
-        }
-    }
-}
-
 pub trait DMA {
     /// Configure and enable a DMA channel.
-    fn configure(&self, params: &Parameters) -> Result<usize, ErrorCode>;
+    fn configure(&'static self,
+                 client: Option<&'static dyn DMAClient>,
+                 params: &Parameters) -> Result<&'static dyn DMAChannel, ErrorCode>;
 
     /// Stop and disable a DMA channel.
-    fn stop(&self, channel_no: usize) -> Result<(), ErrorCode>;
+    fn stop(&'static self, channel_no: usize) -> Result<(), ErrorCode>;
+}
+
+pub trait DMAChannel {
+    /// Start a transfer on an idle DMA channel.
+    fn start(&self, buffer: &'static mut [usize]) -> Result<(), ErrorCode>;
 }
 
 /// DMA-related callbacks.
