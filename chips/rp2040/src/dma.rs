@@ -291,6 +291,9 @@ impl Channel {
 
 impl hil::dma::DMAChannel for Channel {
     fn start(&self, buffer: &'static mut [usize]) -> Result<(), ErrorCode> {
+        // Get:
+        // - amount of data to the channel will transfer.
+        // - transfer type that the channel will perform.
         let (len_required, kind) = self.config.map(|c| {
             (c.transfer_count * c.transfer_size as usize,
              c.kind)

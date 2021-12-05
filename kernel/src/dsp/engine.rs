@@ -3,41 +3,14 @@
 use core::cell::Cell;
 
 use crate::config;
+use crate::dsp::buffer::{AudioBuffer, BufferState};
+use crate::dsp::component::{Collector, Processor, Player};
 use crate::hil::dma::DMA;
 use crate::static_buf;
 use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
-use crate::utilities::cells::TakeCell;
 
-#[derive(Copy, Clone)]
-enum BufferState {
-    /// Buffer is ready to hold new samples.
-    Free,
-    /// Buffer is currently collecting samples.
-    Collecting,
-    /// Filters are working with this buffer.
-    Processing,
-    /// Buffer contains processed, unplayed samples.
-    Ready,
-    /// Buffer samples are being output.
-    Playing,
-}
-
-struct AudioBuffer {
-    samples: TakeCell<'static, [usize]>,
-    current_state: BufferState,
-}
-
-impl AudioBuffer {
-    unsafe fn new() -> AudioBuffer {
-        AudioBuffer {
-            samples: TakeCell::new(static_buf!([usize; config::NO_SAMPLES]).initialize([0; config::NO_SAMPLES])),
-            current_state: BufferState::Free,
-        }
-    }
-}
-
-pub struct ASPK {
+pub struct DSPEngine {
     /// Buffers for audio samples.
     sample_buffers: [AudioBuffer; config::SAMPLE_BUFFERS],
     /// Index of the currently collecting buffer.
@@ -48,10 +21,10 @@ pub struct ASPK {
     playback_idx: Cell<usize>,
 }
 
-impl ASPK {
-    /// Create a new ASPK instance.
-    pub unsafe fn new() -> ASPK {
-        ASPK {
+impl DSPEngine {
+    /// Create a new `DSPEngine` instance.
+    pub unsafe fn new() -> DSPEngine {
+        DSPEngine {
             sample_buffers: [AudioBuffer::new(),
                              AudioBuffer::new(),
                              AudioBuffer::new()],
@@ -74,8 +47,11 @@ impl ASPK {
         dma: &'static dyn DMA,
     ) -> !
     {
+        // Configure DMA channels.
+
         // Start the loop process by passing the first buffer to the DMA collecting samples from the ADC.
 
-        loop {  }
+        loop {
+        }
     }
 }

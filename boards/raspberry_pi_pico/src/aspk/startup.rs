@@ -1,6 +1,6 @@
 use kernel::static_init;
 use kernel::Kernel;
-use kernel::dsp::ASPK;
+use kernel::dsp::engine::DSPEngine;
 
 use rp2040;
 use rp2040::gpio::SIO;
@@ -24,7 +24,7 @@ pub unsafe fn launch() -> ! {
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
 
     // ASPK runtime context
-    let aspk = static_init!(ASPK, ASPK::new());
+    let aspk = static_init!(DSPEngine, DSPEngine::new());
 
     kernel.dsp_loop(board_resources,
                     chip_resources,

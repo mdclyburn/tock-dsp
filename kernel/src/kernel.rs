@@ -11,7 +11,7 @@ use core::ptr::NonNull;
 use crate::capabilities;
 use crate::config;
 use crate::debug;
-use crate::dsp::ASPK;
+use crate::dsp::engine::DSPEngine;
 use crate::dynamic_deferred_call::DynamicDeferredCall;
 use crate::errorcode::ErrorCode;
 use crate::grant::Grant;
@@ -484,7 +484,7 @@ impl Kernel {
         &self,
         resources: &R,
         chip: &C,
-        dsp: &ASPK,
+        dsp: &DSPEngine,
         dma: &'static dyn hil::dma::DMA,
     ) -> !
     {

@@ -1,7 +1,6 @@
 //! Direct memory access.
 
 use crate::errorcode::ErrorCode;
-use crate::utilities::cells::TakeCell;
 
 /// Size of each DMA transfer operation.
 #[derive(Copy, Clone)]
