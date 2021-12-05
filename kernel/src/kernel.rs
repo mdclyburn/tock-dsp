@@ -484,7 +484,7 @@ impl Kernel {
         &self,
         resources: &R,
         chip: &C,
-        dsp: &DSPEngine,
+        dsp: &'static DSPEngine,
         dma: &'static dyn hil::dma::DMA,
     ) -> !
     {

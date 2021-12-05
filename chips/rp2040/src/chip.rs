@@ -7,6 +7,7 @@ use kernel::platform::chip::InterruptService;
 
 use crate::adc;
 use crate::clocks::Clocks;
+use crate::dma::{self, DMA};
 use crate::gpio::{RPPins, SIO};
 use crate::interrupts;
 use crate::psm::PowerOnStateMachine;
@@ -137,6 +138,7 @@ pub struct Rp2040DefaultPeripherals<'a> {
     pub sysinfo: sysinfo::SysInfo,
     pub psm: PowerOnStateMachine,
     pub fifo: FIFO,
+    pub dma: DMA,
 }
 
 impl<'a> Rp2040DefaultPeripherals<'a> {
@@ -155,6 +157,7 @@ impl<'a> Rp2040DefaultPeripherals<'a> {
             sysinfo: sysinfo::SysInfo::new(),
             psm: PowerOnStateMachine::new(),
             fifo: FIFO::new(),
+            dma: DMA::new(),
         }
     }
 
@@ -193,6 +196,14 @@ impl InterruptService<()> for Rp2040DefaultPeripherals<'_> {
             }
             interrupts::IO_IRQ_BANK0 => {
                 self.pins.handle_interrupt();
+                true
+            }
+            interrupts::DMA_IRQ_0 => {
+                self.dma.handle_interrupt(dma::InterruptLine::IRQ0);
+                true
+            }
+            interrupts::DMA_IRQ_1 => {
+                self.dma.handle_interrupt(dma::InterruptLine::IRQ1);
                 true
             }
             _ => false,

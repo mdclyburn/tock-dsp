@@ -77,6 +77,7 @@ pub struct RaspberryPiPico {
     hw_sync_access: &'static sync::HardwareSyncBlockAccess,
     ipm: &'static ipm::ASPKMessaging,
     led: &'static capsules::led::LedDriver<'static, LedHigh<'static, RPGpioPin<'static>>>,
+    #[allow(unused)] // DSP uses this
     adc: &'static rp2040::adc::Adc,
     // temperature: &'static capsules::temperature::TemperatureSensor<'static>,
 

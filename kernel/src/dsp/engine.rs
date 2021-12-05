@@ -3,10 +3,9 @@
 use core::cell::Cell;
 
 use crate::config;
-use crate::dsp::buffer::{AudioBuffer, BufferState};
+use crate::dsp::buffer::AudioBuffer;
 use crate::dsp::component::{Collector, Processor, Player};
-use crate::hil::dma::DMA;
-use crate::static_buf;
+use crate::hil::dma::{self, DMA, DMAChannel};
 use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
 
@@ -39,21 +38,38 @@ impl DSPEngine {
     /// Performs initial configuration and starts the DSP loop.
     /// Once configured, the DSP side of the kernel will respond to a short list of interrupts:
     /// SIO, for interprocessor messaging;
-    /// DMA, for sample processing.
+    /// DMA, for sample processing and output.
     pub fn run<C: Chip, R: KernelResources<C>>(
-        &self,
+        &'static self,
         chip: &C,
         resources: &R,
         dma: &'static dyn DMA,
     ) -> !
     {
         // Configure DMA channels.
+        let adc_dma_channel = allocate_adc_dma(dma);
+        let adc_dma_channel_no = adc_dma_channel.channel_no();
 
         // Create buffer handler components.
-
-        // Start the loop process by passing the first buffer to the DMA collecting samples from the ADC.
+        let (mut _collector, mut _processor, mut _player) =
+            (Collector::new(self.sample_buffers.iter().cycle(), adc_dma_channel),
+             Processor::new(self.sample_buffers.iter().cycle()),
+             Player::new(self.sample_buffers.iter().cycle()));
 
         loop {
         }
     }
+}
+
+fn allocate_adc_dma(dma: &'static dyn DMA) -> &'static dyn DMAChannel {
+    let params = dma::Parameters {
+            kind: dma::TransferKind::PeripheralToMemory(dma::SourcePeripheral::ADC, 0),
+            transfer_count: config::NO_SAMPLES,
+            transfer_size: dma::TransferSize::Word, // need to optimize
+            increment_on_read: false,
+            increment_on_write: true,
+            high_priority: true,
+    };
+
+    dma.configure(&params).unwrap()
 }

@@ -1,7 +1,8 @@
 //! Audio sample buffer management.
 
+use core::cell::Cell;
+
 use crate::config;
-use crate::static_buf;
 use crate::utilities::cells::TakeCell;
 
 /// Current status of samples in an [`AudioBuffer`].
@@ -24,30 +25,38 @@ pub enum BufferState {
 /// Container for audio samples.
 pub struct AudioBuffer {
     samples: TakeCell<'static, [usize]>,
-    current_state: BufferState,
+    current_state: Cell<BufferState>,
 }
 
 impl AudioBuffer {
     /// Create an [`AudioBuffer`].
     pub unsafe fn new() -> AudioBuffer {
+        use crate::static_buf;
+
         AudioBuffer {
             samples: TakeCell::new(static_buf!([usize; config::NO_SAMPLES]).initialize([0; config::NO_SAMPLES])),
-            current_state: BufferState::Free,
+            current_state: Cell::new(BufferState::Free),
         }
     }
 
     /// Remove the sample buffer for use.
-    pub fn take(&self) -> Option<&'static mut [usize]> {
-        self.samples.take()
+    pub fn take(&self, new_state: BufferState) -> Option<&'static mut [usize]> {
+        if self.samples.is_some() {
+            self.current_state.set(new_state);
+            self.samples.take()
+        } else {
+            None
+        }
     }
 
     /// Replace the sample buffer.
-    pub fn put(&self, buffer: &'static mut [usize]) {
+    pub fn put(&self, buffer: &'static mut [usize], new_state: BufferState) {
+        self.current_state.set(new_state);
         self.samples.put(Some(buffer))
     }
 
     /// Current state of samples in the buffer.
     pub fn state(&self) -> BufferState {
-        self.current_state
+        self.current_state.get()
     }
 }

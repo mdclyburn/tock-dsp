@@ -1,11 +1,10 @@
 //! RP2040 Direct Memory Access peripheral.
 
 use cortexm0p::nvic::Nvic;
-
 use kernel::ErrorCode;
 use kernel::hil;
 use kernel::utilities::StaticRef;
-use kernel::utilities::cells::{MapCell, TakeCell};
+use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use kernel::utilities::registers::{
     register_bitfields,
     register_structs,
@@ -17,6 +16,9 @@ use kernel::utilities::registers::interfaces::{
     Writeable,
     ReadWriteable,
 };
+
+/// Number of DMA channels on the RP2040.
+const NO_CHANNELS: usize = 12;
 
 register_structs! {
     DMAChannel {
@@ -272,22 +274,38 @@ const DMA_CHANNELS: StaticRef<[DMAChannel; 12]> = unsafe {
 
 /// Single, configured DMA channel.
 pub struct Channel {
-    channel_register: StaticRef<DMAChannel>,
+    channel_no: usize,
     buffer: TakeCell<'static, [usize]>,
     config: MapCell<hil::dma::Parameters>,
+    client: OptionalCell<&'static dyn hil::dma::DMAClient>,
 }
 
 impl Channel {
-    unsafe fn unconfigured(channel_no: usize) -> Channel {
+    const fn unconfigured(channel_no: usize) -> Channel {
         Channel {
-            channel_register: StaticRef::new((DMA_BASE_ADDRESS as *const DMAChannel).offset(channel_no as isize)),
+            channel_no,
             buffer: TakeCell::empty(),
             config: MapCell::empty(),
+            client: OptionalCell::empty(),
+        }
+    }
+
+    fn handle_interrupt(&self) {
+        if let Some(client) = self.client.extract() {
+            if let Some(buffer) = self.buffer.take() {
+                client.transfer_done(self.channel_no, buffer);
+            } else {
+                panic!("Interrupt handler called but no there was no buffer.");
+            }
         }
     }
 }
 
 impl hil::dma::DMAChannel for Channel {
+    fn channel_no(&self) -> usize {
+        self.channel_no
+    }
+
     fn start(&self, buffer: &'static mut [usize]) -> Result<(), ErrorCode> {
         // Get:
         // - amount of data to the channel will transfer.
@@ -310,7 +328,7 @@ impl hil::dma::DMAChannel for Channel {
             // the source buffer or the destination buffer.
             use hil::dma::TransferKind::*;
             let addr = buffer.as_ptr();
-            let channel_register = &self.channel_register;
+            let channel_register = &DMA_CHANNELS[self.channel_no];
             match kind {
                 MemoryToPeripheral(_ra, _p) => channel_register.read_addr.set(addr as u32),
                 PeripheralToMemory(_p, _wa) => channel_register.write_addr.set(addr as u32),
@@ -318,9 +336,23 @@ impl hil::dma::DMAChannel for Channel {
             };
 
             self.buffer.put(Some(buffer));
-            self.channel_register.ctrl.modify(CTRL::EN::Enable);
+            channel_register.ctrl.modify(CTRL::EN::Enable);
+
             Ok(())
         }
+    }
+
+    fn poll(&self) -> Option<&'static mut [usize]> {
+        let done = DMA_CHANNELS[self.channel_no].trans_count.get() == 0;
+        if done {
+            self.buffer.take()
+        } else {
+            None
+        }
+    }
+
+    fn set_client(&self, client: &'static dyn hil::dma::DMAClient) {
+        self.client.set(client)
     }
 }
 
@@ -336,10 +368,10 @@ impl DMA {
     ///
     /// Because this type contains state information about configured DMA channels,
     /// there should only ever be one instance of this type.
-    pub unsafe fn new() -> DMA {
+    pub const fn new() -> DMA {
         DMA {
             channel_registers: DMA_CHANNELS,
-            interrupt_registers: StaticRef::new(DMA_BASE_ADDRESS as *const Interrupts),
+            interrupt_registers: unsafe { StaticRef::new(DMA_BASE_ADDRESS as *const Interrupts) },
             configs: [Channel::unconfigured(0),
                       Channel::unconfigured(1),
                       Channel::unconfigured(2),
@@ -362,6 +394,25 @@ impl DMA {
             InterruptLine::IRQ1 => crate::interrupts::DMA_IRQ_1,
         };
         unsafe { Nvic::new(irq_no) }.enable();
+    }
+
+    /// Handle a DMA interrupt.
+    pub fn handle_interrupt(&self, interrupt_no: InterruptLine) {
+        // Find out which channel(s) is responsible for the interrupt.
+        let ints = match interrupt_no {
+            InterruptLine::IRQ0 => &self.interrupt_registers.ints0,
+            InterruptLine::IRQ1 => &self.interrupt_registers.ints1,
+        };
+        let status = ints.get();
+
+        for channel_idx in 0..NO_CHANNELS {
+            if (1 << channel_idx) & status == 1 {
+                self.configs[channel_idx].handle_interrupt();
+            }
+        }
+
+        // Clear channel interrupt status.
+        ints.set(status);
     }
 
     /// Set up a DMA channel.
@@ -403,7 +454,6 @@ impl DMA {
                     if let TransferKind::PeripheralToMemory(source_peripheral, _write_addr) = options.kind {
                         match source_peripheral {
                             SourcePeripheral::ADC => TransferRequestSignal::ADC as u32,
-                            _ => panic!("Unhandled DMA source peripheral."),
                         }
                     } else {
                         // Transfer proceeds as fast as possible.

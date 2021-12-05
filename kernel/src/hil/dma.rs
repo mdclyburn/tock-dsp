@@ -60,11 +60,20 @@ pub trait DMA {
 }
 
 pub trait DMAChannel {
+    /// Return the channel's number.
+    fn channel_no(&self) -> usize;
+
     /// Start a transfer on an idle DMA channel.
     fn start(&self, buffer: &'static mut [usize]) -> Result<(), ErrorCode>;
+
+    /// Poll to check for a completed DMA transfer.
+    fn poll(&self) -> Option<&'static mut [usize]>;
+
+    /// Assign a client interrupt processing will notify when a transfer completes for this DMA channel.
+    fn set_client(&self, client: &'static dyn DMAClient);
 }
 
 /// DMA-related callbacks.
 pub trait DMAClient {
-    fn transfer_done(&self, buffer: &'static mut [usize]);
+    fn transfer_done(&self, channel_no: usize, buffer: &'static mut [usize]);
 }
