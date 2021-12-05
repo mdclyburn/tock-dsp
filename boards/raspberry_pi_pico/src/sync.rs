@@ -100,6 +100,7 @@ impl HardwareSyncBlock {
 
     /// Returns a bitmap representing the spinlocks that are allocated to consuming code.
     ///
+    /// This function is useful for debugging purposes.
     /// The position of the bit indicates the spinlock number.
     /// A 0 means that no code is making use of the spinlock,
     /// and a 1 means that code is making use of the spinlock
@@ -107,6 +108,7 @@ impl HardwareSyncBlock {
     /// This is distinct from locking state.
     ///
     /// Note that at least one spinlock will always appear allocated as one is required to synchronize access to the `HardwareSyncBlock`.
+    #[allow(dead_code)]
     pub fn allocation_state(&self) -> u32 {
         self.allocation_state.get()
     }

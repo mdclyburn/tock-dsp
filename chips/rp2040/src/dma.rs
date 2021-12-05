@@ -1,13 +1,11 @@
 //! RP2040 Direct Memory Access peripheral.
 
-use core::cell::Cell;
-
 use cortexm0p::nvic::Nvic;
 
 use kernel::ErrorCode;
 use kernel::hil;
 use kernel::utilities::StaticRef;
-use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
+use kernel::utilities::cells::{MapCell, TakeCell};
 use kernel::utilities::registers::{
     register_bitfields,
     register_structs,
@@ -371,7 +369,6 @@ impl DMA {
     /// Returns the number of the channel that was configured.
     pub fn configure(
         &'static self,
-        client: Option<&'static dyn hil::dma::DMAClient>,
         options: &hil::dma::Parameters,
     ) -> Result<&'static dyn hil::dma::DMAChannel, ErrorCode>
     {
@@ -386,7 +383,7 @@ impl DMA {
 
                     match options.kind {
                         TransferKind::MemoryToMemory(ra, wa) => (ra, wa),
-                        TransferKind::MemoryToPeripheral(ra, p) => unimplemented!(),
+                        TransferKind::MemoryToPeripheral(_ra, _p) => unimplemented!(),
                         TransferKind::PeripheralToMemory(p, wa) => (peripheral_source_address(p), wa),
                     }
                 };
@@ -440,14 +437,13 @@ impl DMA {
 
 impl hil::dma::DMA for DMA {
     fn configure(&'static self,
-                 client: Option<&'static dyn hil::dma::DMAClient>,
                  params: &hil::dma::Parameters)
                  -> Result<&'static dyn hil::dma::DMAChannel, ErrorCode>
     {
-        self.configure(client, params)
+        self.configure(params)
     }
 
-    fn stop(&'static self, channel_no: usize) -> Result<(), ErrorCode> {
+    fn stop(&'static self, _channel_no: usize) -> Result<(), ErrorCode> {
         Err(ErrorCode::NOSUPPORT)
     }
 }

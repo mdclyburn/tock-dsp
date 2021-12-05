@@ -139,6 +139,7 @@ enum ADCStatus {
 }
 
 /// Number of cycles required to produce a single sample.
+#[allow(unused)]
 const SAMPLE_DURATION: usize = 96;
 
 pub struct Adc {

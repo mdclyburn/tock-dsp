@@ -53,7 +53,6 @@ pub struct Parameters {
 pub trait DMA {
     /// Configure and enable a DMA channel.
     fn configure(&'static self,
-                 client: Option<&'static dyn DMAClient>,
                  params: &Parameters) -> Result<&'static dyn DMAChannel, ErrorCode>;
 
     /// Stop and disable a DMA channel.

@@ -49,6 +49,8 @@ impl DSPEngine {
     {
         // Configure DMA channels.
 
+        // Create buffer handler components.
+
         // Start the loop process by passing the first buffer to the DMA collecting samples from the ADC.
 
         loop {

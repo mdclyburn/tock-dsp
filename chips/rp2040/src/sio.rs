@@ -35,7 +35,7 @@ impl FIFO {
                    self.sio.get_processor() as u8);
             // Clear out FIFO, there's no client to receive the data.
             while self.sio.fifo_valid() {
-                let discarded_data = self.sio.read_fifo();
+                let _discarded_data = self.sio.read_fifo();
             }
         }
     }

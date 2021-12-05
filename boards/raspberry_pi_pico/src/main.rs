@@ -33,7 +33,6 @@ use rp2040::gpio::{GpioFunction, RPGpio, RPGpioPin, SIO};
 use rp2040::multicore;
 use rp2040::psm::PowerOnStateMachine;
 use rp2040::resets::Peripheral;
-use rp2040::sysinfo;
 use rp2040::timer::RPTimer;
 
 mod aspk;
@@ -537,17 +536,6 @@ pub unsafe fn main() {
         scheduler,
         systick: cortexm0p::systick::SysTick::new_with_calibration(125_000_000),
     };
-
-    let platform_type = match peripherals.sysinfo.get_platform() {
-        sysinfo::Platform::Asic => "ASIC",
-        sysinfo::Platform::Fpga => "FPGA",
-    };
-
-    // debug!(
-    //     "RP2040 Revision {} {}",
-    //     peripherals.sysinfo.get_revision(),
-    //     platform_type
-    // );
 
     /// These symbols are defined in the linker script.
     extern "C" {
