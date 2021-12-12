@@ -386,7 +386,7 @@ register_bitfields![
         VALUE OFFSET(0) NUMBITS (32)
     ],
     FIFO_ST [
-        /// FIFO read when empy
+        /// FIFO read when empty
         ROE OFFSET(3) NUMBITS(1) [],
         /// FIFO written when full
         WOF OFFSET(2) NUMBITS(1) [],

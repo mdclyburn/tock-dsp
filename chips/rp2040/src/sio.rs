@@ -22,7 +22,12 @@ impl FIFO {
 
     pub fn handle_interrupt(&self) {
         if self.sio.fifo_error() {
-            panic!("FIFO improperly used: {:#010X}", self.sio.fifo_state());
+            let state = self.sio.fifo_state();
+            panic!("FIFO error: {}", if state & (1 << 3) != 0 {
+                "read on empty"
+            } else {
+                "write on full"
+            });
         }
 
         if let Some(fifo_client) = self.client.extract() {
