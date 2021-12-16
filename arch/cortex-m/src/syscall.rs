@@ -5,6 +5,8 @@ use core::fmt::Write;
 use core::mem;
 use core::ptr::{read_volatile, write_volatile};
 
+use kernel::errorcode::ErrorCode;
+
 /// This is used in the syscall handler. When set to 1 this means the
 /// svc_handler was called. Marked `pub` because it is used in the cortex-m*
 /// specific handler.
@@ -346,5 +348,54 @@ impl kernel::syscall::UserspaceKernelBoundary for SysCall {
                 "!!ERROR - Cortex M Thumb only!"
             },
         ));
+    }
+
+    unsafe fn create_context(&self, stack: *const u8, pc: *const fn()) -> Result<Self::StoredState, ErrorCode> {
+        let stacked_context: &mut [usize; 8] = (stack as *mut [usize; 8])
+            .offset(-8)
+            .as_mut()
+            // stack must be a pointer greater than NULL + 8 * sizeof(usize).
+            .unwrap();
+        *stacked_context =
+            [0x00000000,
+             0x01010101,
+             0x02020202,
+             0x03030303,
+             0x12121212,
+             0x14141414,
+             0x15151515,
+             0x00000000];
+
+
+        Ok(CortexMStoredState {
+            regs: [0x0000_0000; 8],
+            yield_pc: pc as usize,
+            psr: 0,
+            psp: stacked_context as *mut usize as usize
+        })
+    }
+
+    unsafe fn switch_to_context(&self, context_state: &mut Self::StoredState) {
+        asm!(
+            "cpsid i",
+
+            // Restore registers not automatically stacked by hardware.
+            "ldmia r0 {{r4-r11}}",
+            "ldr sp, r1",
+            "ldr lr, r2", // Set the return to the yielded PC.
+
+            // Set to unprivileged mode.
+            "mov r0, #0xff",
+            "msr control, r0",
+            "isb",
+
+            "cpsie i",
+            "bx lr",
+
+            in("r0") &context_state.regs as *const [usize; 8] as usize,
+            in("r1") context_state.psp,
+            in("r2") context_state.yield_pc,
+            options(noreturn),
+        );
     }
 }

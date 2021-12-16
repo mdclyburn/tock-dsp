@@ -9,7 +9,8 @@ MEMORY
   /* boot from Flash */
   rom (rx)  : ORIGIN = 0x10000000, LENGTH = 128K
   prog (rx) : ORIGIN = 0x10020000, LENGTH = 256K
-  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 260K
+  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 256K
+  aspk_ram (rwx) : ORIGIN = 0x20040000, LENGTH = 4K
   core1_ram (rwx) : ORIGIN = 0x20041000, LENGTH = 4K
 }
 
@@ -37,13 +38,22 @@ SECTIONS {
     . = ALIGN(4);
   } >ram
 
-  .core1_support (NOLOAD) :
+  .aspk (NOLOAD) :
   {
     . = ALIGN(8);
     _core1_sstack = .;
     KEEP(*(.core1_stack_buffer));
     . = ALIGN(8);
     _core1_estack = .;
+  } >aspk_ram
+
+  .core1_support (NOLOAD) :
+  {
+    . = ALIGN(8);
+    _processing_sstack = .;
+    KEEP(*(.processing_stack_buffer));
+    . = ALIGN(8);
+    _processing_estack = .;
 
     . = ALIGN (256);
 

@@ -1052,7 +1052,13 @@ impl SIO {
     #[inline]
     pub fn fifo_error(&self) -> bool {
         let fifo_st = self.registers.fifo_st.get();
-        fifo_st & (FIFO_ST::ROE.mask << FIFO_ST::ROE.shift | FIFO_ST::WOF.mask << FIFO_ST::WOF.shift) != 0
+        fifo_st & ((FIFO_ST::ROE.mask << FIFO_ST::ROE.shift)
+                   | (FIFO_ST::WOF.mask << FIFO_ST::WOF.shift)) != 0
+    }
+
+    #[inline]
+    pub fn fifo_clear_error(&self) {
+        self.registers.fifo_st.set((1 << 3) | (1 << 2));
     }
 
     /// Attempt to claim a spinlock.

@@ -46,7 +46,8 @@ impl<'a, I: InterruptService<()>> Rp2040<'a, I> {
             sio: sio,
             processor0_interrupt_mask: interrupt_mask!(interrupts::SIO_IRQ_PROC1,
                                                        interrupts::DMA_IRQ_0),
-            processor1_interrupt_mask: interrupt_mask!(interrupts::SIO_IRQ_PROC0),
+            processor1_interrupt_mask: interrupt_mask!(interrupts::SIO_IRQ_PROC0,
+                                                       interrupts::UART0_IRQ),
         }
     }
 }

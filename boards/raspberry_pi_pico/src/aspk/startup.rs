@@ -1,12 +1,13 @@
 use kernel::static_init;
 use kernel::Kernel;
 use kernel::dsp::engine::DSPEngine;
+use kernel::dsp::link::Link;
 
 use rp2040;
 use rp2040::gpio::SIO;
 
 use crate::{RP2040Chip, RaspberryPiPico};
-use crate::aspk::interrupt;
+use crate::aspk::{effects, interrupt};
 
 /// Start ASPK.
 ///
@@ -15,17 +16,42 @@ use crate::aspk::interrupt;
 #[no_mangle]
 #[allow(unreachable_code)]
 pub unsafe fn launch() -> ! {
+    // core1 performs a harmless read during startup in the bootrom
+    // (see pico-bootrom/bootrom/bootrom_rt0.S:338).
+    // This causes the ROE flag to always go high if the FIFO was empty.
+    // Clear this error here so we do not have an interrupt pending.
+    asm!(
+        "push {{r0, r1}}",
+        "movs r1, 0b1000",
+        "ldr r0, SIO_FIFO_ST",
+        "str r1, [r0]",
+        "pop {{r0, r1}}",
+        "b __after_core1_fifo_st_clear",
+
+        "SIO_FIFO_ST: .word 0xd0000050",
+
+        "__after_core1_fifo_st_clear:",
+    );
+
     rp2040::init();
     interrupt::configure();
 
-    let sio = SIO::new();
-
     // The first three words from the other side are the kernel, board, and chip resources.
+    let sio = SIO::new();
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
 
-    // ASPK runtime context
-    let aspk = static_init!(DSPEngine, DSPEngine::new());
+    // Processing chain.
+    let dsp_chain: &'static dyn Link = {
+        let noop = static_init!(effects::NoOp, effects::NoOp::new());
+        noop
+    };
 
+    // ASPK runtime context
+    let aspk = static_init!(DSPEngine, DSPEngine::new(dsp_chain, &super::_processing_estack as *const u8));
+
+    board_resources.adc.configure_continuous_dma(
+        rp2040::adc::Channel::Channel0,
+        DSPEngine::sampling_rate() as u32);
     kernel.dsp_loop(board_resources,
                     chip_resources,
                     aspk,
@@ -39,7 +65,7 @@ fn receive_resources(sio: &SIO) -> (&'static Kernel,
 {
     let mut resources: [u32; 3] = [0; 3];
     for i in 0..3 {
-        while !sio.fifo_ready() {  }
+        while !sio.fifo_valid() {  }
         resources[i] = sio.read_fifo();
     }
 

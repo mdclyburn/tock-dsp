@@ -23,26 +23,34 @@ impl FIFO {
     pub fn handle_interrupt(&self) {
         if self.sio.fifo_error() {
             let state = self.sio.fifo_state();
-            panic!("FIFO error: {}", if state & (1 << 3) != 0 {
-                "read on empty"
-            } else {
-                "write on full"
-            });
-        }
-
-        if let Some(fifo_client) = self.client.extract() {
-            while self.sio.fifo_valid() {
-                let data = self.sio.read_fifo();
-                fifo_client.data_received(data);
-            }
+            debug!("Warning: core{} FIFO {}",
+                   self.sio.get_processor() as u8,
+                   if state & (1 << 3) != 0 {
+                       "read on empty"
+                   } else {
+                       "write on full"
+                   });
+            self.clear_error();
         } else {
-            debug!("core{} discarding data from FIFO.",
-                   self.sio.get_processor() as u8);
-            // Clear out FIFO, there's no client to receive the data.
-            while self.sio.fifo_valid() {
-                let _discarded_data = self.sio.read_fifo();
+            if let Some(fifo_client) = self.client.extract() {
+                while self.sio.fifo_valid() {
+                    let data = self.sio.read_fifo();
+                    fifo_client.data_received(data);
+                }
+            } else {
+                debug!("core{} discarding data from FIFO.",
+                       self.sio.get_processor() as u8);
+                // Clear out FIFO, there's no client to receive the data.
+                while self.sio.fifo_valid() {
+                    let _discarded_data = self.sio.read_fifo();
+                }
             }
         }
+    }
+
+    /// Clear the ROE and WOF error bits.
+    pub fn clear_error(&self) {
+        self.sio.fifo_clear_error()
     }
 }
 

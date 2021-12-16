@@ -191,6 +191,24 @@ impl Adc {
             });
         }
     }
+
+    pub fn configure_continuous_dma(&self, channel: Channel, frequency: u32) {
+        self.status.set(ADCStatus::Continuous);
+        self.channel.set(channel);
+
+        let clock_freq = 48_000_000;
+        let cycles_per_sample = clock_freq / frequency;
+        let cycles_per_sample = if cycles_per_sample < 95 { 95 } else { cycles_per_sample };
+        let cycles_per_sample = if cycles_per_sample > u16::MAX as u32 { u16::MAX as u32 } else { cycles_per_sample };
+
+        self.registers.div.modify(DIV::INT.val(cycles_per_sample));
+        self.registers.fcs.modify(
+            FCS::THRESH.val(1)
+                + FCS::DREQ_EN::SET
+                + FCS::EN::SET);
+        self.registers.cs.modify(CS::AINSEL.val(channel as u32));
+        self.registers.cs.modify(CS::START_MANY::SET);
+    }
 }
 
 impl hil::adc::Adc for Adc {
