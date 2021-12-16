@@ -32,7 +32,7 @@ pub unsafe fn launch_core1(psm: &PowerOnStateMachine,
                     1u32,
                     vector_table_addr as u32,
                     stack_pointer as u32,
-                    entry as u32];
+                    (entry as u32) | 0b1];
 
     support::atomic(|| {
         // Reset core1 and wait for it to signal readiness through the FIFO.
