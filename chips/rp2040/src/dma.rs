@@ -54,24 +54,24 @@ register_structs! {
 
     Interrupts {
         /// Interrupt status (raw).
-        (0x400 => intr: ReadOnly<u32, ()>),
+        (0x000 => intr: ReadOnly<u32, ()>),
         /// Interrupt enablement for DMA_IRQ0.
-        (0x404 => inte0: ReadWrite<u32, ()>),
+        (0x004 => inte0: ReadWrite<u32, ()>),
         /// Force interrupts.
-        (0x408 => intf0: ReadWrite<u32, ()>),
+        (0x008 => intf0: ReadWrite<u32, ()>),
         /// Interrupt status for DMA_IRQ0.
-        (0x40c => ints0: ReadWrite<u32, ()>),
+        (0x00c => ints0: ReadWrite<u32, ()>),
 
-        (0x410 => _reserved0),
+        (0x010 => _reserved0),
 
         /// Interrupt enablement for DMA_IRQ1.
-        (0x414 => inte1: ReadWrite<u32, ()>),
+        (0x014 => inte1: ReadWrite<u32, ()>),
         /// Force interrupts.
-        (0x418 => intf1: ReadWrite<u32, ()>),
+        (0x018 => intf1: ReadWrite<u32, ()>),
         /// Interrupt status for DMA_IRQ0.
-        (0x41c => ints1: ReadWrite<u32, ()>),
+        (0x01c => ints1: ReadWrite<u32, ()>),
 
-        (0x420 => @END),
+        (0x020 => @END),
     },
 
     /// Pacing fractional timers.
@@ -268,6 +268,8 @@ pub enum InterruptLine {
 }
 
 const DMA_BASE_ADDRESS: usize = 0x5000_0000;
+const DMA_INTERRUPTS_ADDRESS: usize = 0x5000_0400;
+
 const DMA_CHANNELS: StaticRef<[DMAChannel; 12]> = unsafe {
     StaticRef::new(DMA_BASE_ADDRESS as *const [DMAChannel; 12])
 };
@@ -314,13 +316,15 @@ impl hil::dma::DMAChannel for Channel {
             (c.transfer_count * c.transfer_size as usize,
              c.kind)
         }).unwrap(); // It should not be possible to have a DMA channel that is unconfigured.
+        // Number of bytes provided through `buffer`.
+        let len_provided = buffer.len() * 4;
 
         // If we have a buffer here, the channel is busy reading from/writing to it.
         // Check the buffer size to ensure the amount of data we'll be transferring from/to
         // it will not exceed the buffer's size.
         if self.buffer.is_some() {
             Err(ErrorCode::BUSY)
-        } else if buffer.len() >= len_required {
+        } else if len_provided < len_required {
             Err(ErrorCode::NOMEM)
         } else {
             // We only support memory-peripheral or peripheral-memory transfers here for now.
@@ -371,7 +375,7 @@ impl DMA {
     pub const fn new() -> DMA {
         DMA {
             channel_registers: DMA_CHANNELS,
-            interrupt_registers: unsafe { StaticRef::new(DMA_BASE_ADDRESS as *const Interrupts) },
+            interrupt_registers: unsafe { StaticRef::new((DMA_INTERRUPTS_ADDRESS) as *const Interrupts) },
             configs: [Channel::unconfigured(0),
                       Channel::unconfigured(1),
                       Channel::unconfigured(2),
@@ -500,6 +504,6 @@ impl hil::dma::DMA for DMA {
 
 const fn peripheral_source_address(p: hil::dma::SourcePeripheral) -> usize {
     match p {
-        hil::dma::SourcePeripheral::ADC => 0x4004_C004,
+        hil::dma::SourcePeripheral::ADC => 0x4004_C00C,
     }
 }
