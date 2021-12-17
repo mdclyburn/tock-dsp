@@ -58,6 +58,63 @@ unsafe fn fail_interrupt() {
     loop { cortexm0p::support::wfe(); }
 }
 
+/// A minimal, context-sensitive interrupt handler.
+#[allow(dead_code)]
+#[naked]
+#[no_mangle]
+unsafe extern "C" fn thin_cs_interrupt_handler() {
+    asm!(
+        "cpsid i",
+
+        // Find out which interrupt this is.
+        "mrs r0, ipsr",
+        "movs r1, #0b11111",
+        "ands r0, r1",
+        "subs r0, #16", // r0 = interrupt number
+
+        // Clear the interrupt.
+        "movs r1, #1",
+        "lsls r1, r0", // r1 = interrupt mask
+        "ldr r2, BICER",
+        "str r1, [r2]",
+
+        // Now, decide what we do about this.
+        // We decide based on where we came from.
+        "ldr r0, PROG_EXC_RETURN",
+        "cmp lr, r0",
+        "bne __back_to_kernel_no_stack",
+
+        // Stack r4, r5, r6, r7, r8, r9, r10, r11, r12
+        "mov r2, sp",
+        "movs r3, #36",
+        "subs r0, r2, r3",
+        "stm r0!, {{r4-r7}}",
+
+        "mov r4, r8",
+        "mov r5, r9",
+        "mov r6, r10",
+        "mov r7, r11",
+        "stm r0!, {{r4-r7}}",
+        "mov r4, r12",
+        "push {{r4, r5}}",
+        "mov sp, r0",
+
+        "__back_to_kernel_no_stack:",
+        "ldr r0, MAIN_EXC_RETURN",
+        "mov lr, r0",
+
+        "cpsie i",
+        "bx lr",
+
+        ".align 4",
+        "BICER: .word 0xe000e180",
+        "MAIN_EXC_RETURN: .word 0xfffffff9",
+        "PROG_EXC_RETURN: .word 0xfffffffd",
+
+        options(noreturn)
+    )
+}
+
 #[allow(dead_code)]
 #[naked]
 #[no_mangle]
