@@ -47,7 +47,7 @@ pub unsafe fn launch() -> ! {
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
 
     // Complete interrupt configuration.
-    interrupt::configure(board_resources.dma);
+    interrupt::configure(board_resources);
 
     // Processing chain.
     let dsp_chain = Chain::new(&[

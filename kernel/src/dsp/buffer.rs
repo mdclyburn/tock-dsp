@@ -1,9 +1,7 @@
 //! Audio sample buffer management.
 
-use core::cell::Cell;
-
 use crate::config;
-use crate::utilities::cells::TakeCell;
+use crate::utilities::cells::{TakeCell, VolatileCell};
 
 /// Current status of samples in an [`AudioBuffer`].
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -25,7 +23,7 @@ pub enum BufferState {
 /// Container for audio samples.
 pub struct AudioBuffer {
     samples: TakeCell<'static, [usize]>,
-    current_state: Cell<BufferState>,
+    current_state: VolatileCell<BufferState>,
 }
 
 impl AudioBuffer {
@@ -35,7 +33,7 @@ impl AudioBuffer {
 
         AudioBuffer {
             samples: TakeCell::new(static_buf!([usize; config::NO_SAMPLES]).initialize([0; config::NO_SAMPLES])),
-            current_state: Cell::new(BufferState::Free),
+            current_state: VolatileCell::new(BufferState::Free),
         }
     }
 

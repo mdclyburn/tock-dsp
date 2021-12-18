@@ -7,7 +7,6 @@ use core::slice::Iter as SliceIter;
 use crate::config;
 use crate::debug;
 use crate::dsp::buffer::{AudioBuffer, BufferState};
-use crate::dsp::component;
 use crate::dsp::link::{Chain, SignalProcessor};
 use crate::errorcode::ErrorCode;
 use crate::hil::adc::Adc;
@@ -83,51 +82,43 @@ impl DSPEngine {
         // Configure output.
         // TODO: implement.
 
-        // Prepare a new context for the processing chain.
-        let mut processing_loop_context = {
-            let processing_loop_fn = component::configure_loop(
-                &chain,
-                &self.in_buffers,
-                &self.out_buffers);
-
-            unsafe {
-                chip.userspace_kernel_boundary()
-                    .create_context(self.processing_stack, processing_loop_fn)
-            }
-        }.unwrap();
-
         // Create cyclic iterators over the audio buffers.
         let mut process_in_buffer_it = self.in_buffers.iter().cycle();
         let mut process_out_buffer_it = self.out_buffers.iter().cycle();
-        let mut current_input_buffer = process_in_buffer_it.next()
-            // cyclic iterator over a slice; shouldn't fail
-            .unwrap();
-        let mut _current_output_buffer = process_out_buffer_it.next()
-            // cyclic iterator over a slice; shouldn't fail
-            .unwrap();
 
         // Start sample collection.
         self.initiate_sampling(adc_dma_channel)
             .expect("failed to start ADC sampling DMA");
 
         loop {
-            // Switch to the processing loop.
-            // chip.userspace_kernel_boundary()
-            //     .switch_to_context(&mut processing_loop_context);
+            // Obtain the next unprocessed sequence of audio samples.
+            // Obtain the next free output buffer for processed samples.
+            let input_buffer = process_in_buffer_it.next().unwrap();
+            let output_buffer = process_out_buffer_it.next().unwrap();
+            while input_buffer.state() != BufferState::Unprocessed {  }
+            while output_buffer.state() != BufferState::Free {  }
 
-            // Find out why the context changed back to the engine loop.
+            // Grab the buffers.
+            let in_samples = input_buffer.take(BufferState::Processing)
+                .expect("buffer for unprocessed input missing");
+            let out_samples = output_buffer.take(BufferState::Processing)
+                .expect("buffer for processed output missing");
 
-            if chip.has_pending_interrupts() {
-                chip.service_pending_interrupts();
+            // Iterate through all links in the chain and run their processors.
+            // Input samples buffer → signal processor → output samples buffer.
+            for link in chain {
+                link.processor().process(&*in_samples, out_samples);
             }
+
+            // Replace the buffers.
+            input_buffer.put(in_samples, BufferState::Free);
+            // This needs to go to BufferState::Ready when we implement playing processed samples.
+            output_buffer.put(out_samples, BufferState::Free);
         }
     }
 
     fn initiate_sampling(&'static self, dma_channel: &dyn DMAChannel) -> Result<(), ErrorCode> {
         let mut buffer_iter = self.in_buffers.iter().cycle().peekable();
-        // Start at the first element to make it easier to debug any possible issues.
-        for _i in 0..self.in_buffers.len()-1 { let _ = buffer_iter.next(); }
-
         // Surrender the first buffer to the DMA channel.
         self.in_buffer_iter.put(buffer_iter);
         let buffer = self.in_buffer_iter
@@ -160,8 +151,8 @@ impl dma::DMAClient for DSPEngine {
                 let next_container = iter.peek().unwrap();
                 if next_container.state() != BufferState::Free {
                     debug!("Sampling has filled all buffers!");
-                    for (buffer_no, buffer) in (0..self.in_buffers.len()).zip(self.in_buffers.iter()) {
-                        debug!("(#{}) {:?}", buffer_no, buffer.state());
+                    for buffer in self.in_buffers.iter() {
+                        debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
                     }
                     panic!("All input buffers exhausted.");
                 } else {

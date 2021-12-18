@@ -10,32 +10,7 @@ use crate::errorcode::ErrorCode;
 use crate::hil::dma::{self, DMA, DMAChannel};
 use crate::utilities::cells::OptionalCell;
 
-#[derive(Copy, Clone)]
-struct ProcessingBuffers {
-    input_buffers: &'static [AudioBuffer; config::SAMPLE_BUFFERS],
-    output_buffers: &'static [AudioBuffer; config::SAMPLE_BUFFERS],
-}
-
-static mut PROCESSING_CHAIN: Option<Chain> = None;
-static mut SAMPLE_BUFFERS: Option<ProcessingBuffers> = None;
-
-pub(super) fn configure_loop(chain: &Chain,
-                             input_buffers: &'static [AudioBuffer; config::SAMPLE_BUFFERS],
-                             output_buffers: &'static [AudioBuffer; config::SAMPLE_BUFFERS]) -> *const fn()
-{
-    unsafe {
-        PROCESSING_CHAIN = Some(*chain);
-        SAMPLE_BUFFERS = Some(ProcessingBuffers {
-            input_buffers,
-            output_buffers,
-        });
-    }
-
-    processing_loop as *const fn()
-}
-
-#[no_mangle]
-fn processing_loop() -> ! {
+pub fn processing_loop() -> ! {
     // We do not call `processing_loop` until we have set the processing chain.
     let chain = unsafe { PROCESSING_CHAIN.unwrap() };
     let (mut input_buffers_it, mut output_buffers_it) = unsafe {

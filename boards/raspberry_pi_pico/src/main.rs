@@ -7,7 +7,7 @@
 // https://github.com/rust-lang/rust/issues/62184.
 #![cfg_attr(not(doc), no_main)]
 #![deny(missing_docs)]
-#![feature(asm, naked_functions)]
+#![feature(asm, maybe_uninit_extra, naked_functions)]
 
 use capsules::virtual_alarm::VirtualMuxAlarm;
 use components::gpio::GpioComponent;
@@ -74,6 +74,7 @@ pub struct RaspberryPiPico {
         >,
     dma: &'static rp2040::dma::DMA,
     gpio: &'static capsules::gpio::GPIO<'static, RPGpioPin<'static>>,
+    fifo: &'static rp2040::sio::FIFO,
     hw_sync_access: &'static sync::HardwareSyncBlockAccess,
     ipm: &'static ipm::ASPKMessaging,
     led: &'static capsules::led::LedDriver<'static, LedHigh<'static, RPGpioPin<'static>>>,
@@ -353,7 +354,9 @@ pub unsafe fn main() {
     let hw_sync_access = static_init!(sync::HardwareSyncBlockAccess,
                                       sync::HardwareSyncBlockAccess::new());
 
-    // RP2040 interprocessor FIFO messaging
+    // RP2040 interprocessor FIFO messaging.
+    // This interprocessor messaging entity applies for both cores in the system.
+    // This ensures that the cores communicate with a consistent codebase.
     let aspk_messaging = static_init!(ipm::ASPKMessaging,
                                       ipm::ASPKMessaging::new(&peripherals.fifo));
     use kernel::hil::fifo::FIFO;
@@ -526,6 +529,7 @@ pub unsafe fn main() {
         alarm,
         dma,
         gpio,
+        fifo: &peripherals.fifo,
         hw_sync_access,
         ipm: aspk_messaging,
         led,

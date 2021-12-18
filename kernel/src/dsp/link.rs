@@ -9,8 +9,8 @@ use crate::utilities::cells::OptionalCell;
 pub trait SignalProcessor {
     /// Run a signal-processing operation on the provided buffer.
     fn process(&self,
-               input_buffer: &'static [usize],
-               output_buffer: &'static mut [usize]);
+               input_buffer: &[usize],
+               output_buffer: &mut [usize]);
 }
 
 /// Unit of a signal processing `Chain`.
@@ -26,6 +26,11 @@ impl Link {
             signal_processor,
             next: OptionalCell::empty(),
         }
+    }
+
+    /// Returns the signal processor in this Link.
+    pub fn processor(&self) -> &'static dyn SignalProcessor {
+        self.signal_processor
     }
 }
 

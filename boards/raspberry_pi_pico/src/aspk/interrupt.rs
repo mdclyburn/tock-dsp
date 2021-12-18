@@ -1,7 +1,13 @@
 //! Interrupt servicing specially crafted for ASPK.
 
+use core::mem::MaybeUninit;
+
 use cortexm0p;
+use kernel::debug;
 use rp2040::dma::{self, DMA};
+use rp2040::sio::FIFO;
+
+use crate::RaspberryPiPico;
 
 /// Core1 vector addresses.
 #[used]
@@ -13,10 +19,11 @@ pub static mut VECTORS: [usize; 16] = [0x0000_0000; 16];
 #[link_section = ".core1_irqs"]
 pub static mut IRQS: [usize; 32] = [0x0000_0000; 32];
 
-static mut DMA: Option<&'static DMA> = None;
+static mut DMA: MaybeUninit<&'static DMA> = MaybeUninit::uninit();
+static mut FIFO: MaybeUninit<&'static FIFO> = MaybeUninit::uninit();
 
 /// Provide an initial configuration for all interrupts and exceptions.
-pub unsafe fn configure(dma: &'static DMA) {
+pub unsafe fn configure(board_resources: &'static RaspberryPiPico) {
     // Initialize all vectors and IRQ handlers to something.
     // Skip the first two since that is the initial stack
     // pointer value and the reset vector.
@@ -28,13 +35,18 @@ pub unsafe fn configure(dma: &'static DMA) {
     };
 
     // Set up the specially-handled interrupts.
-    DMA = Some(dma);
+    DMA.write(board_resources.dma);
+    FIFO.write(board_resources.fifo);
 
     for (no, handler) in (0..).zip(&mut IRQS) {
         *handler = match no {
             // DMA0
             11 => dma_interrupt_handler as usize,
             12 => dma_interrupt_handler as usize,
+            // SIO
+            // Ignore core0's interrupt and disable it if it ever comes up.
+            15 => ignore_disable_interrupt_handler as usize,
+            16 => sio_interrupt_handler as usize,
             // UART0, we let core0 handle servicing this.
             // However, if core1 sends something through the UART,
             // the HAL enables the interrupt, so we ignore it and disable it.
@@ -68,7 +80,6 @@ unsafe fn fail_interrupt() {
 }
 
 /// Handler to service DMA immediately.
-#[allow(dead_code)]
 #[no_mangle]
 unsafe extern "C" fn dma_interrupt_handler() {
     let dma_irq_no: usize;
@@ -79,6 +90,8 @@ unsafe extern "C" fn dma_interrupt_handler() {
         // Get the interrupt number.
         // We need to see whether this was DMA IRQ 0 or 1.
         "mrs r0, ipsr",
+        "movs r1, #0b11111",
+        "ands r0, r1",
         "subs r0, #16",
 
         out("r0") dma_irq_no
@@ -88,7 +101,19 @@ unsafe extern "C" fn dma_interrupt_handler() {
     } else {
         dma::InterruptLine::IRQ1
     };
-    DMA.unwrap().handle_interrupt(dma_irq_line);
+    DMA.assume_init().handle_interrupt(dma_irq_line);
+
+    asm!("cpsie i");
+}
+
+#[no_mangle]
+unsafe extern "C" fn sio_interrupt_handler() {
+    // There is not need to explicitly disable this interrupt.
+    // The interrupt is actually a logical OR of the ROE, WOF, VLD FIFO status bits.
+
+    asm!("cpsid i");
+
+    FIFO.assume_init().handle_interrupt();
 
     asm!("cpsie i");
 }
