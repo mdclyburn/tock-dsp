@@ -11,6 +11,7 @@ use core::ptr::NonNull;
 use crate::capabilities;
 use crate::config;
 use crate::debug;
+use crate::dsp;
 use crate::dsp::engine::DSPEngine;
 use crate::dynamic_deferred_call::DynamicDeferredCall;
 use crate::errorcode::ErrorCode;
@@ -486,9 +487,10 @@ impl Kernel {
         chip: &C,
         dsp: &'static DSPEngine,
         dma: &'static dyn hil::dma::DMA,
+        processing_chain: &dsp::link::Chain,
     ) -> !
     {
-        dsp.run(chip, resources, dma);
+        dsp.run(chip, resources, dma, processing_chain);
     }
 
     /// Transfer control from the kernel to a userspace process.

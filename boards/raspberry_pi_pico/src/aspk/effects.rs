@@ -1,6 +1,6 @@
 //! Audio signal processing effects.
 
-use kernel::dsp::link::Link;
+use kernel::dsp::link::SignalProcessor;
 
 pub struct NoOp {  }
 
@@ -10,8 +10,6 @@ impl NoOp {
     }
 }
 
-impl Link for NoOp {
-    fn next(&self) -> Option<&'static dyn Link> { None }
-
+impl SignalProcessor for NoOp {
     fn process(&self, samples: &'static mut [usize]) {  }
 }

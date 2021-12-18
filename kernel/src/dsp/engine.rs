@@ -6,7 +6,7 @@ use core::iter::Iterator;
 use crate::config;
 use crate::dsp::buffer::{AudioBuffer, BufferState};
 use crate::dsp::component;
-use crate::dsp::link::{Link, LinkIt};
+use crate::dsp::link::{Chain, SignalProcessor};
 use crate::hil::adc::Adc;
 use crate::hil::dma::{self, DMA, DMAChannel};
 use crate::platform::KernelResources;
@@ -14,8 +14,6 @@ use crate::platform::chip::Chip;
 use crate::syscall::UserspaceKernelBoundary;
 
 pub struct DSPEngine {
-    /// Processing chain.
-    chain: &'static dyn Link,
     /// Chain processor stack pointer.
     processing_stack: *const u8,
     /// Buffers for incoming audio samples.
@@ -26,9 +24,8 @@ pub struct DSPEngine {
 
 impl DSPEngine {
     /// Create a new `DSPEngine` instance.
-    pub unsafe fn new(chain: &'static dyn Link, processing_stack: *const u8) -> DSPEngine {
+    pub unsafe fn new(processing_stack: *const u8) -> DSPEngine {
         DSPEngine {
-            chain,
             processing_stack,
             in_buffers: [AudioBuffer::new(),
                          AudioBuffer::new(),
@@ -53,6 +50,7 @@ impl DSPEngine {
         chip: &C,
         resources: &R,
         dma: &'static dyn DMA,
+        chain: &Chain,
     ) -> !
     {
         // Configure ADC sampling flow.
@@ -74,7 +72,11 @@ impl DSPEngine {
 
         // Prepare a new context for the processing chain.
         let mut processing_loop_context = {
-            let processing_loop_fn = component::configure_loop(self.chain, &self.in_buffers, &self.out_buffers);
+            let processing_loop_fn = component::configure_loop(
+                &chain,
+                &self.in_buffers,
+                &self.out_buffers);
+
             unsafe {
                 chip.userspace_kernel_boundary()
                     .create_context(self.processing_stack, processing_loop_fn)

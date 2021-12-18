@@ -1,13 +1,20 @@
 use kernel::static_init;
 use kernel::Kernel;
 use kernel::dsp::engine::DSPEngine;
-use kernel::dsp::link::Link;
+use kernel::dsp::link::{Chain, Link};
 
 use rp2040;
 use rp2040::gpio::SIO;
 
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::{effects, interrupt};
+
+macro_rules! create_link {
+    ($effect_type:ty, $init:expr) => {{
+        let effect = kernel::static_init!($effect_type, $init);
+        kernel::static_init!(Link, Link::new(effect))
+    }}
+}
 
 /// Start ASPK.
 ///
@@ -41,13 +48,12 @@ pub unsafe fn launch() -> ! {
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
 
     // Processing chain.
-    let dsp_chain: &'static dyn Link = {
-        let noop = static_init!(effects::NoOp, effects::NoOp::new());
-        noop
-    };
+    let dsp_chain = Chain::new(&[
+        create_link!(effects::NoOp, effects::NoOp::new())
+    ]);
 
     // ASPK runtime context
-    let aspk = static_init!(DSPEngine, DSPEngine::new(dsp_chain, &super::_processing_estack as *const u8));
+    let aspk = static_init!(DSPEngine, DSPEngine::new(&super::_processing_estack as *const u8));
 
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,
@@ -55,7 +61,8 @@ pub unsafe fn launch() -> ! {
     kernel.dsp_loop(board_resources,
                     chip_resources,
                     aspk,
-                    board_resources.dma);
+                    board_resources.dma,
+                    &dsp_chain);
 }
 
 #[inline(never)]

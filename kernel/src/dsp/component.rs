@@ -5,7 +5,7 @@ use core::slice::Iter as SliceIter;
 
 use crate::config;
 use crate::dsp::buffer::{AudioBuffer, BufferState};
-use crate::dsp::link::{Link, LinkIt};
+use crate::dsp::link::{Chain, Link};
 use crate::errorcode::ErrorCode;
 use crate::hil::dma::{self, DMA, DMAChannel};
 use crate::utilities::cells::OptionalCell;
@@ -16,15 +16,15 @@ struct ProcessingBuffers {
     output_buffers: &'static [AudioBuffer; config::SAMPLE_BUFFERS],
 }
 
-static mut PROCESSING_CHAIN: Option<&'static dyn Link> = None;
+static mut PROCESSING_CHAIN: Option<Chain> = None;
 static mut SAMPLE_BUFFERS: Option<ProcessingBuffers> = None;
 
-pub(super) fn configure_loop(chain: &'static dyn Link,
+pub(super) fn configure_loop(chain: &Chain,
                              input_buffers: &'static [AudioBuffer; config::SAMPLE_BUFFERS],
                              output_buffers: &'static [AudioBuffer; config::SAMPLE_BUFFERS]) -> *const fn()
 {
     unsafe {
-        PROCESSING_CHAIN = Some(chain);
+        PROCESSING_CHAIN = Some(*chain);
         SAMPLE_BUFFERS = Some(ProcessingBuffers {
             input_buffers,
             output_buffers,
@@ -37,7 +37,7 @@ pub(super) fn configure_loop(chain: &'static dyn Link,
 #[no_mangle]
 fn processing_loop() -> ! {
     // We do not call `processing_loop` until we have set the processing chain.
-    let first_link = unsafe { PROCESSING_CHAIN.unwrap() };
+    let chain = unsafe { PROCESSING_CHAIN.unwrap() };
     let (mut input_buffers_it, mut output_buffers_it) = unsafe {
         if let Some(proc_buffers) = SAMPLE_BUFFERS {
             (proc_buffers.input_buffers.iter().cycle(),
@@ -56,11 +56,10 @@ fn processing_loop() -> ! {
         while output_buffer.state() != BufferState::Free {  }
 
         // Iterate through all links in the processing chain and apply them.
-        let chain = LinkIt::new(first_link);
         let in_samples = input_buffer.take(BufferState::Processing).unwrap();
         let out_samples = output_buffer.take(BufferState::Processing).unwrap();
 
-        for link in chain {  }
+        for link in &chain {  }
 
         input_buffer.put(in_samples, BufferState::Free);
         output_buffer.put(out_samples, BufferState::Ready);
