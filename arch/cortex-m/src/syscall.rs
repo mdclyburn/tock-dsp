@@ -375,7 +375,7 @@ impl kernel::syscall::UserspaceKernelBoundary for SysCall {
         })
     }
 
-    unsafe fn switch_to_context(&self, context_state: &mut Self::StoredState) {
+    unsafe fn switch_to_context(&self, _context_state: &mut Self::StoredState) {
         unimplemented!()
     }
 }
