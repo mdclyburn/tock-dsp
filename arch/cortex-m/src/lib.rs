@@ -861,6 +861,11 @@ pub unsafe extern "C" fn switch_to_user_arm_v7m(
 }
 
 #[cfg(not(any(target_arch = "arm", target_os = "none")))]
+pub unsafe extern "C" fn switch_to_context(_state: &mut syscall::CortexMStoredState) {
+    unimplemented!()
+}
+
+#[cfg(not(any(target_arch = "arm", target_os = "none")))]
 pub unsafe extern "C" fn hard_fault_handler_arm_v7m() {
     unimplemented!()
 }

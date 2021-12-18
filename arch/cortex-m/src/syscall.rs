@@ -376,26 +376,6 @@ impl kernel::syscall::UserspaceKernelBoundary for SysCall {
     }
 
     unsafe fn switch_to_context(&self, context_state: &mut Self::StoredState) {
-        asm!(
-            "cpsid i",
-
-            // Restore registers not automatically stacked by hardware.
-            "ldmia r0 {{r4-r11}}",
-            "ldr sp, r1",
-            "ldr lr, r2", // Set the return to the yielded PC.
-
-            // Set to unprivileged mode.
-            "mov r0, #0xff",
-            "msr control, r0",
-            "isb",
-
-            "cpsie i",
-            "bx lr",
-
-            in("r0") &context_state.regs as *const [usize; 8] as usize,
-            in("r1") context_state.psp,
-            in("r2") context_state.yield_pc,
-            options(noreturn),
-        );
+        unimplemented!()
     }
 }
