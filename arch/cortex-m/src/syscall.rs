@@ -366,7 +366,6 @@ impl kernel::syscall::UserspaceKernelBoundary for SysCall {
              0x15151515,
              0x00000000];
 
-
         Ok(CortexMStoredState {
             regs: [0x0000_0000; 8],
             yield_pc: pc as usize,

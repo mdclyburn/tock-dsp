@@ -7,21 +7,17 @@ use core::slice::Iter as SliceIter;
 use crate::config;
 use crate::debug;
 use crate::dsp::buffer::{AudioBuffer, BufferState};
-use crate::dsp::link::{Chain, SignalProcessor};
+use crate::dsp::link::Chain;
 use crate::errorcode::ErrorCode;
-use crate::hil::adc::Adc;
 use crate::hil::dma::{self, DMA, DMAChannel};
 use crate::hil::time::{self, Time, ConvertTicks};
 use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
-use crate::syscall::UserspaceKernelBoundary;
 use crate::utilities::cells::MapCell;
 
 type CyclicBufferIter = Peekable<Cycle<SliceIter<'static, AudioBuffer>>>;
 
 pub struct DSPEngine {
-    /// Chain processor stack pointer.
-    processing_stack: *const u8,
     /// Buffers for incoming audio samples.
     in_buffers: [AudioBuffer; config::SAMPLE_BUFFERS],
     /// Buffers for outgoing audio samples.
@@ -34,9 +30,8 @@ pub struct DSPEngine {
 
 impl DSPEngine {
     /// Create a new `DSPEngine` instance.
-    pub unsafe fn new(processing_stack: *const u8) -> DSPEngine {
+    pub unsafe fn new() -> DSPEngine {
         DSPEngine {
-            processing_stack,
             in_buffers: [AudioBuffer::new(),
                          AudioBuffer::new(),
                          AudioBuffer::new()],
@@ -62,8 +57,8 @@ impl DSPEngine {
                F: time::Frequency,
                T: time::Ticks>(
         &'static self,
-        chip: &C,
-        resources: &R,
+        _chip: &C,
+        _resources: &R,
         dma: &'static dyn DMA,
         time: &dyn Time<Frequency = F, Ticks = T>,
         chain: &Chain,
@@ -135,8 +130,7 @@ impl DSPEngine {
     }
 
     fn initiate_sampling(&'static self, dma_channel: &dyn DMAChannel) -> Result<(), ErrorCode> {
-        let mut buffer_iter = self.in_buffers.iter().cycle().peekable();
-        // Surrender the first buffer to the DMA channel.
+        let buffer_iter = self.in_buffers.iter().cycle().peekable();
         self.in_buffer_iter.put(buffer_iter);
         let buffer = self.in_buffer_iter
             .map(|iter| iter.peek().unwrap().take(BufferState::Collecting).unwrap())
@@ -174,7 +168,8 @@ impl dma::DMAClient for DSPEngine {
                     panic!("All input buffers exhausted.");
                 } else {
                     let buffer = next_container.take(BufferState::Collecting).unwrap();
-                    channel.start(buffer);
+                    channel.start(buffer)
+                        .expect("could not start sampling DMA channel");
                 }
             });
         } else {

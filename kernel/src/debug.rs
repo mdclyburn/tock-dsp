@@ -103,7 +103,7 @@ pub unsafe fn panic_print<W: Write + IoWrite, C: Chip>(
     writer: &mut W,
     panic_info: &PanicInfo,
     nop: &dyn Fn(),
-    processes: &'static [Option<&'static dyn Process>],
+    _processes: &'static [Option<&'static dyn Process>],
     chip: &'static Option<&'static C>,
 ) {
     panic_begin(nop);

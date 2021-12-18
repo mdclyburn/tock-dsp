@@ -28,16 +28,10 @@ pub unsafe fn launch() -> ! {
     // This causes the ROE flag to always go high if the FIFO was empty.
     // Clear this error here so we do not have an interrupt pending.
     asm!(
-        "push {{r0, r1}}",
         "movs r1, 0b1000",
-        "ldr r0, SIO_FIFO_ST",
+        "ldr r0, =0xd0000050", // 0xd0000050 = &SIO_FIFO_ST
         "str r1, [r0]",
         "pop {{r0, r1}}",
-        "b __after_core1_fifo_st_clear",
-
-        "SIO_FIFO_ST: .word 0xd0000050",
-
-        "__after_core1_fifo_st_clear:",
     );
 
     rp2040::init();
@@ -51,11 +45,15 @@ pub unsafe fn launch() -> ! {
 
     // Processing chain.
     let dsp_chain = Chain::new(&[
-        create_link!(effects::NoOp, effects::NoOp::new())
+        create_link!(effects::NoOp, effects::NoOp::new()),
+        create_link!(effects::NoOp, effects::NoOp::new()),
+        create_link!(effects::NoOp, effects::NoOp::new()),
+        create_link!(effects::NoOp, effects::NoOp::new()),
+        create_link!(effects::NoOp, effects::NoOp::new()),
     ]);
 
     // ASPK runtime context
-    let aspk = static_init!(DSPEngine, DSPEngine::new(&super::_processing_estack as *const u8));
+    let aspk = static_init!(DSPEngine, DSPEngine::new());
 
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,

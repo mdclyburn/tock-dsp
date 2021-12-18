@@ -1,6 +1,5 @@
 //! Signal chain and link construction.
 
-use core::cell::Cell;
 use core::iter::{IntoIterator, Iterator};
 
 use crate::utilities::cells::OptionalCell;

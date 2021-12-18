@@ -610,9 +610,9 @@ pub trait UserspaceKernelBoundary {
         writer: &mut dyn Write,
     );
 
-    unsafe fn create_context(&self, stack: *const u8, pc: *const fn()) -> Result<Self::StoredState, ErrorCode> {
+    unsafe fn create_context(&self, _stack: *const u8, _pc: *const fn()) -> Result<Self::StoredState, ErrorCode> {
         Err(ErrorCode::NOSUPPORT)
     }
 
-    unsafe fn switch_to_context(&self, context_state: &mut Self::StoredState) {  }
+    unsafe fn switch_to_context(&self, _context_state: &mut Self::StoredState) {  }
 }

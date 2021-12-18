@@ -3,7 +3,6 @@
 use core::mem::MaybeUninit;
 
 use cortexm0p;
-use kernel::debug;
 use rp2040::dma::{self, DMA};
 use rp2040::sio::FIFO;
 
