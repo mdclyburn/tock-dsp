@@ -84,6 +84,7 @@ pub struct RaspberryPiPico {
 
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm0p::systick::SysTick,
+    timer: &'static RPTimer<'static>,
 }
 
 impl SyscallDriverLookup for RaspberryPiPico {
@@ -540,6 +541,7 @@ pub unsafe fn main() {
 
         scheduler,
         systick: cortexm0p::systick::SysTick::new_with_calibration(125_000_000),
+        timer: &peripherals.timer,
     };
 
     /// These symbols are defined in the linker script.

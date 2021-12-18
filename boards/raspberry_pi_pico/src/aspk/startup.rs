@@ -64,6 +64,7 @@ pub unsafe fn launch() -> ! {
                     chip_resources,
                     aspk,
                     board_resources.dma,
+                    board_resources.timer,
                     &dsp_chain);
 }
 

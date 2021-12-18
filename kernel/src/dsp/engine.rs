@@ -11,6 +11,7 @@ use crate::dsp::link::{Chain, SignalProcessor};
 use crate::errorcode::ErrorCode;
 use crate::hil::adc::Adc;
 use crate::hil::dma::{self, DMA, DMAChannel};
+use crate::hil::time::{self, Time, ConvertTicks};
 use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
 use crate::syscall::UserspaceKernelBoundary;
@@ -56,11 +57,15 @@ impl DSPEngine {
     /// Once configured, the DSP side of the kernel will respond to a short list of interrupts:
     /// SIO, for interprocessor messaging;
     /// DMA, for sample processing and output.
-    pub fn run<C: Chip, R: KernelResources<C>>(
+    pub fn run<C: Chip,
+               R: KernelResources<C>,
+               F: time::Frequency,
+               T: time::Ticks>(
         &'static self,
         chip: &C,
         resources: &R,
         dma: &'static dyn DMA,
+        time: &dyn Time<Frequency = F, Ticks = T>,
         chain: &Chain,
     ) -> !
     {
@@ -90,6 +95,7 @@ impl DSPEngine {
         self.initiate_sampling(adc_dma_channel)
             .expect("failed to start ADC sampling DMA");
 
+        let mut ts = false;
         loop {
             // Obtain the next unprocessed sequence of audio samples.
             // Obtain the next free output buffer for processed samples.
@@ -97,6 +103,9 @@ impl DSPEngine {
             let output_buffer = process_out_buffer_it.next().unwrap();
             while input_buffer.state() != BufferState::Unprocessed {  }
             while output_buffer.state() != BufferState::Free {  }
+
+            // Start timing the DSP loop.
+            let loop_start = time.ticks_to_us(time.now());
 
             // Grab the buffers.
             let in_samples = input_buffer.take(BufferState::Processing)
@@ -108,6 +117,14 @@ impl DSPEngine {
             // Input samples buffer → signal processor → output samples buffer.
             for link in chain {
                 link.processor().process(&*in_samples, out_samples);
+            }
+
+            // Stop timing the DSP loop.
+            let loop_end = time.ticks_to_us(time.now());
+
+            if loop_end > 1_000_000 && !ts {
+                debug!("Loop timing: {}μs ({}μs -> {}μs)", loop_end - loop_start, loop_start, loop_end);
+                ts = true;
             }
 
             // Replace the buffers.
