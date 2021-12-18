@@ -11,5 +11,5 @@ impl NoOp {
 }
 
 impl SignalProcessor for NoOp {
-    fn process(&self, samples: &'static mut [usize]) {  }
+    fn process(&self, input_buffer: &'static [usize], output_buffer: &'static mut [usize]) {  }
 }

@@ -5,16 +5,22 @@ use core::iter::{IntoIterator, Iterator};
 
 use crate::utilities::cells::OptionalCell;
 
+/// Digital signal transformer.
 pub trait SignalProcessor {
-    fn process(&self, samples: &'static mut [usize]);
+    /// Run a signal-processing operation on the provided buffer.
+    fn process(&self,
+               input_buffer: &'static [usize],
+               output_buffer: &'static mut [usize]);
 }
 
+/// Unit of a signal processing `Chain`.
 pub struct Link {
     signal_processor: &'static dyn SignalProcessor,
     next: OptionalCell<&'static Link>,
 }
 
 impl Link {
+    /// Create a new 'Link`.
     pub fn new(signal_processor: &'static dyn SignalProcessor) -> Link {
         Link {
             signal_processor,
@@ -23,12 +29,14 @@ impl Link {
     }
 }
 
+/// Ordering of signal processing `Link`s.
 #[derive(Copy, Clone)]
 pub struct Chain {
     link_head: &'static Link,
 }
 
 impl Chain {
+    /// Create a new `Chain`.
     pub fn new(links: &[&'static Link]) -> Chain {
         let link_head = links[0];
         let mut prev_link = link_head;
@@ -54,6 +62,7 @@ impl<'a> IntoIterator for &'a Chain {
     }
 }
 
+/// An iterator over `Link`s in a `Chain`.
 pub struct ChainIt<'a> {
     current: Option<&'a Link>,
 }

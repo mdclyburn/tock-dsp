@@ -295,7 +295,7 @@ impl Channel {
     fn handle_interrupt(&self) {
         if let Some(client) = self.client.extract() {
             if let Some(buffer) = self.buffer.take() {
-                client.transfer_done(self.channel_no, buffer);
+                client.transfer_done(self, buffer);
             } else {
                 panic!("Interrupt handler called but no there was no buffer.");
             }

@@ -75,5 +75,5 @@ pub trait DMAChannel {
 
 /// DMA-related callbacks.
 pub trait DMAClient {
-    fn transfer_done(&self, channel_no: usize, buffer: &'static mut [usize]);
+    fn transfer_done(&self, channel: &dyn DMAChannel, buffer: &'static mut [usize]);
 }

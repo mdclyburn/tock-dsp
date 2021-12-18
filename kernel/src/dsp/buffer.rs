@@ -6,7 +6,7 @@ use crate::config;
 use crate::utilities::cells::TakeCell;
 
 /// Current status of samples in an [`AudioBuffer`].
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BufferState {
     /// Buffer is ready to hold new samples.
     Free,

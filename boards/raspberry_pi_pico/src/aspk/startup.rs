@@ -41,11 +41,13 @@ pub unsafe fn launch() -> ! {
     );
 
     rp2040::init();
-    interrupt::configure();
 
     // The first three words from the other side are the kernel, board, and chip resources.
     let sio = SIO::new();
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
+
+    // Complete interrupt configuration.
+    interrupt::configure(board_resources.dma);
 
     // Processing chain.
     let dsp_chain = Chain::new(&[
