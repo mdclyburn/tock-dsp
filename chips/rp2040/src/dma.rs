@@ -310,13 +310,16 @@ impl hil::dma::DMAChannel for Channel {
 
     fn start(&self, buffer: &'static mut [usize]) -> Result<(), ErrorCode> {
         // Get:
-        // - amount of data to the channel will transfer.
-        // - transfer type that the channel will perform.
-        let (len_required, kind) = self.config.map(|c| {
-            (c.transfer_count * c.transfer_size as usize,
+        // - number of transfers the channel will perform
+        // - no. of bytes the channel will copy in each transfer
+        // - transfer type that the channel will perform
+        let (transfer_count, transfer_size, kind) = self.config.map(|c| {
+            (c.transfer_count,
+             c.transfer_size as usize,
              c.kind)
-        }).unwrap(); // It should not be possible to have a DMA channel that is unconfigured.
+        }).unwrap(); // It is not possible to have a DMA channel that is unconfigured.
         // Number of bytes provided through `buffer`.
+        let len_required = transfer_count * transfer_size;
         let len_provided = buffer.len() * 4;
 
         // If we have a buffer here, the channel is busy reading from/writing to it.
@@ -340,6 +343,7 @@ impl hil::dma::DMAChannel for Channel {
             };
 
             self.buffer.put(Some(buffer));
+            channel_register.trans_count.set(transfer_count as u32);
             channel_register.ctrl.modify(CTRL::EN::Enable);
 
             Ok(())
@@ -445,7 +449,6 @@ impl DMA {
 
                 self.channel_registers[idx].read_addr.set(read_addr as u32);
                 self.channel_registers[idx].write_addr.set(write_addr as u32);
-                self.channel_registers[idx].trans_count.set(options.transfer_count as u32);
 
                 // No support for wrapping in HIL.
                 let (ring_sel, ring_size) = (0, 0);
