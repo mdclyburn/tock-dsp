@@ -26,6 +26,7 @@ pub struct DSPEngine {
     adc_dma_channel_no: Cell<u8>,
     /// Cyclical input buffer iterator.
     in_buffer_iter: MapCell<CyclicBufferIter>,
+    stat_output: Cell<usize>,
 }
 
 impl DSPEngine {
@@ -40,6 +41,7 @@ impl DSPEngine {
                           AudioBuffer::new()],
             adc_dma_channel_no: Cell::new(99),
             in_buffer_iter: MapCell::empty(),
+            stat_output: Cell::new(0),
         }
     }
 
@@ -90,7 +92,6 @@ impl DSPEngine {
         self.initiate_sampling(adc_dma_channel)
             .expect("failed to start ADC sampling DMA");
 
-        let mut ts = false;
         loop {
             // Obtain the next unprocessed sequence of audio samples.
             // Obtain the next free output buffer for processed samples.
@@ -116,11 +117,7 @@ impl DSPEngine {
 
             // Stop timing the DSP loop.
             let loop_end = time.ticks_to_us(time.now());
-
-            if loop_end > 1_000_000 && !ts {
-                debug!("Loop timing: {}μs ({}μs -> {}μs)", loop_end - loop_start, loop_start, loop_end);
-                ts = true;
-            }
+            debug!("Loop timing: {}μs ({}μs -> {}μs)", loop_end - loop_start, loop_start, loop_end);
 
             // Replace the buffers.
             input_buffer.put(in_samples, BufferState::Free);
