@@ -46,10 +46,7 @@ pub unsafe fn launch() -> ! {
     // Processing chain.
     let dsp_chain = Chain::new(&[
         create_link!(effects::NoOp, effects::NoOp::new()),
-        create_link!(effects::NoOp, effects::NoOp::new()),
-        create_link!(effects::NoOp, effects::NoOp::new()),
-        create_link!(effects::NoOp, effects::NoOp::new()),
-        create_link!(effects::NoOp, effects::NoOp::new()),
+        create_link!(effects::Scale, effects::Scale::new(1, 4)),
     ]);
 
     // ASPK runtime context

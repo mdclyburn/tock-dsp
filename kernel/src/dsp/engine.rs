@@ -92,6 +92,7 @@ impl DSPEngine {
         self.initiate_sampling(adc_dma_channel)
             .expect("failed to start ADC sampling DMA");
 
+        let mut t_post = 1;
         loop {
             // Obtain the next unprocessed sequence of audio samples.
             // Obtain the next free output buffer for processed samples.
@@ -109,24 +110,30 @@ impl DSPEngine {
             let out_samples = output_buffer.take(BufferState::Processing)
                 .expect("buffer for processed output missing");
 
-            // Iterate through all links in the chain and run their processors.
-            // Input samples buffer → signal processor → output samples buffer.
-            for link in chain {
-                link.processor().process(&*in_samples, out_samples);
-            }
-
             // Copy samples from the input buffer to the output buffer.
             // 44.1kHz * 4 sampling rate, 20ms sample size requires an extra ~260μs (.26ms) to copy.
             for (in_sample, out_sample) in in_samples.iter().zip(out_samples.iter_mut()) {
                 *out_sample = *in_sample;
             }
+            // We are now done with the input buffer; put it back
+            input_buffer.put(in_samples, BufferState::Free);
+
+            // Iterate through all links in the chain and run their processors.
+            // Input samples buffer → signal processor → output samples buffer.
+            for link in chain {
+                link.processor().process(out_samples);
+            }
 
             // Stop timing the DSP loop.
             let loop_end = time.ticks_to_us(time.now());
-            debug!("Loop timing: {}μs ({}μs -> {}μs)", loop_end - loop_start, loop_start, loop_end);
+            if t_post * 500_000 < loop_end {
+                t_post += 1;
+                debug!("Loop timing: {}μs ({}μs -> {}μs)",
+                       loop_end - loop_start,
+                       loop_start,
+                       loop_end);
+            }
 
-            // Replace the buffers.
-            input_buffer.put(in_samples, BufferState::Free);
             // This needs to go to BufferState::Ready when we implement playing processed samples.
             output_buffer.put(out_samples, BufferState::Free);
         }
