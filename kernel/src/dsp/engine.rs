@@ -115,6 +115,12 @@ impl DSPEngine {
                 link.processor().process(&*in_samples, out_samples);
             }
 
+            // Copy samples from the input buffer to the output buffer.
+            // 44.1kHz * 4 sampling rate, 20ms sample size requires an extra ~260μs (.26ms) to copy.
+            for (in_sample, out_sample) in in_samples.iter().zip(out_samples.iter_mut()) {
+                *out_sample = *in_sample;
+            }
+
             // Stop timing the DSP loop.
             let loop_end = time.ticks_to_us(time.now());
             debug!("Loop timing: {}μs ({}μs -> {}μs)", loop_end - loop_start, loop_start, loop_end);
