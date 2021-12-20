@@ -25,7 +25,8 @@ unsafe fn allocate_aspk_resources() -> ASPKResources {
     ASPKResources {
         engine: static_init!(DSPEngine, DSPEngine::new()),
         signal_chain: Chain::new(&[
-            create_link!(effects::Scale, effects::Scale::new(1, 4)),
+            create_link!(effects::NoOpCopy, effects::NoOpCopy::new()),
+            // create_link!(effects::Scale, effects::Scale::new(1, 4)),
         ]),
     }
 }

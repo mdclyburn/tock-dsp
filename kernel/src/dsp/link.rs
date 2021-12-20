@@ -7,7 +7,7 @@ use crate::utilities::cells::OptionalCell;
 /// Digital signal transformer.
 pub trait SignalProcessor {
     /// Run a signal-processing operation on the provided buffer.
-    fn process(&self, samples: &mut [usize]);
+    fn process(&self, in_samples: &[usize], out_samples: &mut [usize]);
 }
 
 /// Unit of a signal processing `Chain`.

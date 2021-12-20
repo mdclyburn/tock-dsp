@@ -26,7 +26,6 @@ pub struct DSPEngine {
     adc_dma_channel_no: Cell<u8>,
     /// Cyclical input buffer iterator.
     in_buffer_iter: MapCell<CyclicBufferIter>,
-    stat_output: Cell<usize>,
 }
 
 impl DSPEngine {
@@ -41,7 +40,6 @@ impl DSPEngine {
                           AudioBuffer::new()],
             adc_dma_channel_no: Cell::new(99),
             in_buffer_iter: MapCell::empty(),
-            stat_output: Cell::new(0),
         }
     }
 
@@ -93,6 +91,7 @@ impl DSPEngine {
             .expect("failed to start ADC sampling DMA");
 
         let mut t_post = 1;
+        let link_count = chain.into_iter().count();
         loop {
             // Obtain the next unprocessed sequence of audio samples.
             // Obtain the next free output buffer for processed samples.
@@ -105,23 +104,19 @@ impl DSPEngine {
             let loop_start = time.ticks_to_us(time.now());
 
             // Grab the buffers.
-            let in_samples = input_buffer.take(BufferState::Processing)
-                .expect("buffer for unprocessed input missing");
-            let out_samples = output_buffer.take(BufferState::Processing)
-                .expect("buffer for processed output missing");
-
-            // Copy samples from the input buffer to the output buffer.
-            // 44.1kHz * 4 sampling rate, 20ms sample size requires an extra ~260μs (.26ms) to copy.
-            for (in_sample, out_sample) in in_samples.iter().zip(out_samples.iter_mut()) {
-                *out_sample = *in_sample;
-            }
-            // We are now done with the input buffer; put it back
-            input_buffer.put(in_samples, BufferState::Free);
+            let (proc_buf_a, proc_buf_b) = (input_buffer.take(BufferState::Processing)
+                                            .expect("buffer for unprocessed input missing"),
+                                            output_buffer.take(BufferState::Processing)
+                                            .expect("buffer for processed output missing"));
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
-            for link in chain {
-                link.processor().process(out_samples);
+            for (link_no, link) in (0..).zip(chain) {
+                if link_no % 2 == 0 {
+                    link.processor().process(&*proc_buf_a, proc_buf_b);
+                } else {
+                    link.processor().process(&*proc_buf_b, proc_buf_a);
+                }
             }
 
             // Stop timing the DSP loop.
@@ -131,8 +126,15 @@ impl DSPEngine {
                 debug!("DSP loop latency: {}μs", loop_end - loop_start);
             }
 
-            // This needs to go to BufferState::Ready when we implement playing processed samples.
-            output_buffer.put(out_samples, BufferState::Free);
+            // Replace the buffers.
+            // The output buffer needs to go to BufferState::Ready when we implement playing processed samples.
+            if link_count % 2 == 0 {
+                input_buffer.put(proc_buf_a, BufferState::Free);
+                output_buffer.put(proc_buf_b, BufferState::Free);
+            } else {
+                input_buffer.put(proc_buf_b, BufferState::Free);
+                output_buffer.put(proc_buf_a, BufferState::Free);
+            }
         }
     }
 
