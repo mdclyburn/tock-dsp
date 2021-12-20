@@ -14,20 +14,20 @@ struct ASPKResources {
     signal_chain: Chain,
 }
 
-fn allocate_aspk_resources() -> ASPKResources {
+macro_rules! create_link {
+    ($effect_type:ty, $init:expr) => {{
+        let effect = kernel::static_init!($effect_type, $init);
+        kernel::static_init!(Link, Link::new(effect))
+    }}
+}
+
+unsafe fn allocate_aspk_resources() -> ASPKResources {
     ASPKResources {
         engine: static_init!(DSPEngine, DSPEngine::new()),
         signal_chain: Chain::new(&[
             create_link!(effects::Scale, effects::Scale::new(1, 4)),
         ]),
     }
-}
-
-macro_rules! create_link {
-    ($effect_type:ty, $init:expr) => {{
-        let effect = kernel::static_init!($effect_type, $init);
-        kernel::static_init!(Link, Link::new(effect))
-    }}
 }
 
 /// Start ASPK.
