@@ -9,6 +9,20 @@ use rp2040::gpio::SIO;
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::{effects, interrupt};
 
+struct ASPKResources {
+    engine: &'static DSPEngine,
+    signal_chain: Chain,
+}
+
+fn allocate_aspk_resources() -> ASPKResources {
+    ASPKResources {
+        engine: static_init!(DSPEngine, DSPEngine::new()),
+        signal_chain: Chain::new(&[
+            create_link!(effects::Scale, effects::Scale::new(1, 4)),
+        ]),
+    }
+}
+
 macro_rules! create_link {
     ($effect_type:ty, $init:expr) => {{
         let effect = kernel::static_init!($effect_type, $init);
@@ -43,23 +57,18 @@ pub unsafe fn launch() -> ! {
     // Complete interrupt configuration.
     interrupt::configure(board_resources);
 
-    // Processing chain.
-    let dsp_chain = Chain::new(&[
-        create_link!(effects::Scale, effects::Scale::new(1, 4)),
-    ]);
-
-    // ASPK runtime context
-    let aspk = static_init!(DSPEngine, DSPEngine::new());
+    let aspk = allocate_aspk_resources();
 
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,
         DSPEngine::sampling_rate() as u32);
+
     kernel.dsp_loop(board_resources,
                     chip_resources,
-                    aspk,
+                    aspk.engine,
                     board_resources.dma,
                     board_resources.timer,
-                    &dsp_chain);
+                    &aspk.signal_chain);
 }
 
 #[inline(never)]
