@@ -128,10 +128,7 @@ impl DSPEngine {
             let loop_end = time.ticks_to_us(time.now());
             if t_post * 500_000 < loop_end {
                 t_post += 1;
-                debug!("Loop timing: {}μs ({}μs -> {}μs)",
-                       loop_end - loop_start,
-                       loop_start,
-                       loop_end);
+                debug!("DSP loop latency: {}μs", loop_end - loop_start);
             }
 
             // This needs to go to BufferState::Ready when we implement playing processed samples.
