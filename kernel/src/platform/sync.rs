@@ -42,11 +42,32 @@ pub trait HardwareSpinlock {
     fn free(&self);
 }
 
+#[derive(Clone)]
+pub struct UnmanagedSpinlock {
+    raw_sl: &'static dyn HardwareSpinlock,
+}
+
+impl Deref for UnmanagedSpinlock {
+    type Target = dyn HardwareSpinlock;
+
+    fn deref(&self) -> &'static dyn HardwareSpinlock {
+        self.raw_sl
+    }
+}
+
+impl From<&'static dyn HardwareSpinlock> for UnmanagedSpinlock {
+    fn from(raw_sl: &'static dyn HardwareSpinlock) -> UnmanagedSpinlock {
+        UnmanagedSpinlock {
+            raw_sl,
+        }
+    }
+}
+
 /// Type wrapper for `HardwareSpinlock` to provide deallocation on Drop.
 ///
-/// The `Spinlock` provides the same interface that `HardwareSpinlock` provides,
+/// The `ManagedSpinlock` provides the same interface that `HardwareSpinlock` provides,
 /// but it automatically handles the responsibility of `free`ing the `HardwareSpinlock`,
-/// calling [`HardwareSpinlock::free`] once `Spinlock` falls out of scope.
+/// calling [`HardwareSpinlock::free`] once `ManagedSpinlock` falls out of scope.
 ///
 /// Create it with the `From<&'static Spinlock>` trait implementation.
 #[derive(Clone)]

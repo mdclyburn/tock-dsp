@@ -6,6 +6,7 @@ mod semaphore;
 use crate::platform::sync::{
     HardwareSpinlock,
     ManagedSpinlock,
+    UnmanagedSpinlock,
 };
 
 pub use mutex::{
@@ -34,6 +35,20 @@ pub trait Lockable {
 }
 
 impl Lockable for ManagedSpinlock {
+    fn try_lock(&self) -> bool {
+        self.try_claim()
+    }
+
+    fn lock(&self) {
+        self.claim();
+    }
+
+    fn release(&self) {
+        HardwareSpinlock::release(core::ops::Deref::deref(self));
+    }
+}
+
+impl Lockable for UnmanagedSpinlock {
     fn try_lock(&self) -> bool {
         self.try_claim()
     }
