@@ -91,7 +91,14 @@ impl DSPEngine {
             .expect("failed to start ADC sampling DMA");
 
         let mut t_post = 1;
-        let link_count = chain.into_iter().count();
+        // Depending on the length of the signal chain and the processing strategy,
+        // the samples go back and forth between buffers as we go through the chain.
+        // If there are an even number of processors in the chain,
+        // then we must bounce buffer ownership between the AudioBuffers to avoid copying samples.
+        let exchange_buffers_after_processing = {
+            let link_count = chain.into_iter().count();
+            link_count % 2 == 0
+        };
         loop {
             // Obtain the next unprocessed sequence of audio samples.
             // Obtain the next free output buffer for processed samples.
@@ -128,7 +135,7 @@ impl DSPEngine {
 
             // Replace the buffers.
             // The output buffer needs to go to BufferState::Ready when we implement playing processed samples.
-            if link_count % 2 == 0 {
+            if exchange_buffers_after_processing {
                 input_buffer.put(proc_buf_a, BufferState::Free);
                 output_buffer.put(proc_buf_b, BufferState::Free);
             } else {
