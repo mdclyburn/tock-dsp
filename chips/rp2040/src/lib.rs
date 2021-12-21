@@ -8,6 +8,7 @@ pub mod dma;
 pub mod gpio;
 pub mod interrupts;
 pub mod multicore;
+pub mod pio;
 pub mod psm;
 pub mod resets;
 pub mod sio;
