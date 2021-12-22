@@ -3,12 +3,13 @@ use kernel::Kernel;
 use kernel::dsp::engine::DSPEngine;
 use kernel::dsp::link::{Chain, Link};
 
+use dsp::effects;
 use pio_proc::pio;
 use rp2040;
 use rp2040::gpio::SIO;
 
 use crate::{RP2040Chip, RaspberryPiPico};
-use crate::aspk::{effects, interrupt};
+use crate::aspk::interrupt;
 
 struct ASPKResources {
     engine: &'static DSPEngine,
@@ -26,7 +27,7 @@ unsafe fn allocate_aspk_resources() -> ASPKResources {
     ASPKResources {
         engine: static_init!(DSPEngine, DSPEngine::new()),
         signal_chain: Chain::new(&[
-            create_link!(effects::NoOpCopy, effects::NoOpCopy::new()),
+            create_link!(effects::NoOp, effects::NoOp::new()),
             // create_link!(effects::Scale, effects::Scale::new(1, 4)),
         ]),
     }

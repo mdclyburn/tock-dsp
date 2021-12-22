@@ -1,4 +1,3 @@
-mod effects;
 mod interrupt;
 mod startup;
 
