@@ -9,7 +9,11 @@ edition = "2018"
 cortexm0p = { path = "../../arch/cortex-m0p" }
 capsules = { path = "../../capsules" }
 kernel = { path = "../../kernel" }
+pio = "*"
+pio-proc = "*"
 rp2040 = { path = "../../chips/rp2040" }
 components = { path = "../components" }
 enum_primitive = { path = "../../libraries/enum_primitive" }
 
+[dev-dependencies]
+pio-proc = "*"
