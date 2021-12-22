@@ -1,5 +1,10 @@
+//! Programmable I/O peripheral.
+
+use core::default::Default;
+
 use cortexm0p::nvic::Nvic;
 
+use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{
     ReadWriteable,
     Readable,
@@ -209,5 +214,216 @@ const PIO1_BASE_ADDRESS: usize = 0x5030_0000;
 const PIO0: StaticRef<PIORegisters> = unsafe { StaticRef::new(PIO0_BASE_ADDRESS as *const PIORegisters) };
 const PIO1: StaticRef<PIORegisters> = unsafe { StaticRef::new(PIO1_BASE_ADDRESS as *const PIORegisters) };
 
+/// FIFO to use for the MOV x, STATUS instruction in [`Parameters`].
+#[derive(Clone, Copy)]
+pub enum StatusSelectFIFO {
+    Transmit,
+    Receive,
+}
+
+/// How to allocate FIFO space for a state machine.
+#[derive(Clone, Copy)]
+pub enum FIFOAllocation {
+    /// Transmit and receive FIFOs have the same size.
+    Balanced,
+    /// Transmit FIFO steals the receive FIFO's storage.
+    Transmit,
+    /// Receive FIFO steals the transmit FIFO's storage.
+    Receive,
+}
+
+/// Direction to shift data entering/leaving shift registers.
+#[derive(Clone, Copy)]
+pub enum ShiftDirection {
+    /// Shift data left.
+    Left,
+    /// Shift data right.
+    Right,
+}
+
+/// Autopush/autopull configuration.
+#[derive(Clone, Copy)]
+pub enum Autoshift {
+    /// Do not autopush/autopull.
+    Off,
+    /// Autopush/autopull the specified number of bits.
+    On(u8),
+}
+
+/// Configuration for a PIO block.
+#[derive(Clone, Copy)]
+pub struct Parameters {
+    // EXECCTRL
+    /// Whether to use the MSB of delay/side-set field to make side-setting optional.
+    ///
+    /// Refer to SMx_EXECCTRL's SIDE_EN bitfield in the datasheet.
+    pub side_set_enables: bool,
+    /// Whether side-setting affects pin directions instead of pin values.
+    pub side_set_pindir: bool,
+    /// Number GPIO pin to use as a condition for JMP PIN.
+    pub jmp_pin: u8,
+    /// Which data bit to use for inline OUT enable.
+    pub out_enable_bit: u8,
+    /// Use a bit of OUT data as an auxiliary write enable.
+    pub inline_out_enable: bool,
+    /// Continuously assert the most recent OUT or SET to the pins.
+    pub out_sticky: bool,
+    /// Address to wrap to `wrap_bottom` from.
+    pub wrap_top: u8,
+    /// Address to wrap to when execution reaches `wrap_top`.
+    pub wrap_bottom: u8,
+    /// Comparison used for the MOV x, STATUS instruction.
+    ///
+    /// Refer to SMx_EXECCTRL's STATUS_SEL bitfield in the datasheet.
+    pub status_source: StatusSelectFIFO,
+    /// Comparison level for the MOV x, STATUS instruction.
+    pub status_source_level: u8,
+
+    // SHIFTCTRL
+    /// How to allocate FIFO storage.
+    pub fifo_allocation: FIFOAllocation,
+    /// Direction to shift out from the OSR.
+    pub osr_direction: ShiftDirection,
+    /// Direction to shift into the ISR.
+    pub isr_direction: ShiftDirection,
+    /// Pull data into the output shift register upon reaching a threshold.
+    pub autopull: Autoshift,
+    /// Push data out of the input shift register upon reaching a threshold.
+    pub autopush: Autoshift,
+
+    // PINCTRL
+    /// Number of MSBs to use for the for side-set (up to 5).
+    pub side_set_count: u8,
+    /// Number of pins to assert with a SET instruction.
+    pub set_count: u8,
+    /// Number of pins to assert with an OUT instruction.
+    pub out_count: u8,
+    /// First pin number mapped to the LSB of the IN data bus.
+    pub in_base_pin: u8,
+    /// First pin number mapped to the LSB of side-set data.
+    pub side_set_base_pin: u8,
+    /// First pin number mapped to the LSB of SET data.
+    pub set_base_pin: u8,
+    /// First pin number mapped to the LSB of OUT data.
+    pub out_base_pin: u8,
+}
+
+impl Default for Parameters {
+    /// Produces the default configuration for a PIO block.
+    ///
+    /// The default values for parameters come from the RP2040 datasheet.
+    /// These numbers are meant to be a safe default and not necessarily a usable default.
+    fn default() -> Parameters {
+        Parameters {
+            side_set_enables: false,
+            side_set_pindir: false,
+            jmp_pin: 0,
+            out_enable_bit: 0,
+            inline_out_enable: false,
+            out_sticky: false,
+            wrap_top: 0x1f,
+            wrap_bottom: 0x00,
+            status_source: StatusSelectFIFO::Transmit,
+            status_source_level: 0,
+            fifo_allocation: FIFOAllocation::Balanced,
+            osr_direction: ShiftDirection::Right,
+            isr_direction: ShiftDirection::Right,
+            autopull: Autoshift::Off,
+            autopush: Autoshift::Off,
+            side_set_count: 0,
+            set_count: 5,
+            out_count: 0,
+            in_base_pin: 0,
+            side_set_base_pin: 0,
+            set_base_pin: 0,
+            out_base_pin: 0,
+        }
+    }
+}
+
+/// PIO IRQ line.
+///
+/// The PIOs have four interrupt lines:
+/// two lines for each of the two blocks.
+/// PIO0 controls PIO0_IRQ0 and PIO0_IRQ1,
+/// and PIO1 controls PIO1_IRQ0 and PIO1_IRQ1.
+#[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub enum InterruptLine {
+    PIO0IRQ0,
+    PIO0IRQ1,
+    PIO1IRQ0,
+    PIO1IRQ1,
+}
+
+/// Interrupt context information.
+#[derive(Clone, Copy)]
+pub enum InterruptReason {
+    /// A state machine raised an interrupt.
+    Flag(u8),
+    /// A state machine's transmission FIFO has available space.
+    TransmitNotFull(u8),
+    /// A state machine's reception FIFO has new data available.
+    ReceiveNotEmpty(u8),
+}
+
+/// Handler to receive notice of a PIO block's events.
+pub trait PIOBlockClient {
+    /// Handler called by [`PIOBlock`] when the PIO peripheral raises an interrupt.
+    ///
+    ///
+    fn interrupt_raised(&self, pio_block: &PIOBlock);
+}
+
+/// PIO peripheral instance.
+pub struct PIOBlock {
+    base_address: StaticRef<PIORegisters>,
+    client: OptionalCell<&'static dyn PIOBlockClient>,
+}
+
+impl PIOBlock {
+    /// Returns the reason(s) for an interrupt.
+    ///
+    /// A client may call this function multiple times until it returns `None`.
+    pub fn next_pending(&self) -> Option<InterruptReason> {
+        unimplemented!()
+    }
+
+    /// Interrupt handler for a specific PIO block.
+    fn handle_interrupt(&self, irq_line: InterruptLine) {
+        unimplemented!()
+    }
+}
+
+/// PIO instance.
 pub struct PIO {
+    pio_blocks: [PIOBlock; 2],
+}
+
+impl PIO {
+    /// Create a new PIO interface.
+    pub const unsafe fn new() -> PIO {
+        PIO {
+            pio_blocks: [
+                PIOBlock {
+                    base_address: PIO0,
+                    client: OptionalCell::empty(),
+                },
+                PIOBlock {
+                    base_address: PIO0,
+                    client: OptionalCell::empty(),
+                }
+            ],
+        }
+    }
+
+    /// Handle a PIO interrupt.
+    pub fn handle_interrupt(&self, irq_line: InterruptLine) {
+        match irq_line {
+            InterruptLine::PIO0IRQ0 | InterruptLine::PIO0IRQ1 =>
+                self.pio_blocks[0].handle_interrupt(irq_line),
+            InterruptLine::PIO1IRQ0 | InterruptLine::PIO1IRQ1 =>
+                self.pio_blocks[1].handle_interrupt(irq_line),
+        }
+    }
 }
