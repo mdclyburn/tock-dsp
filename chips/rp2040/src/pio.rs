@@ -1,10 +1,12 @@
 //! Programmable I/O peripheral.
 
+use core::cell::Cell;
 use core::default::Default;
 
 use cortexm0p::nvic::Nvic;
 
-use kernel::utilities::cells::OptionalCell;
+use kernel::errorcode::ErrorCode;
+use kernel::utilities::cells::{NumericCellExt, OptionalCell};
 use kernel::utilities::registers::interfaces::{
     ReadWriteable,
     Readable,
@@ -21,6 +23,7 @@ use kernel::utilities::StaticRef;
 
 #[repr(C)]
 struct StateMachineControl {
+    clkdiv: ReadWrite<u32, SM_CLKDIV::Register>,
     execctrl: ReadWrite<u32, SM_EXECCTRL::Register>,
     shiftctrl: ReadWrite<u32, SM_SHIFTCTRL::Register>,
     addr: ReadOnly<u32, SM_ADDR::Register>,
@@ -30,7 +33,6 @@ struct StateMachineControl {
 
 #[repr(C)]
 struct InterruptControl {
-    intr: ReadOnly<u32, INTx::Register>,
     inte: ReadWrite<u32, INTx::Register>,
     intf: ReadWrite<u32, INTx::Register>,
     ints: ReadOnly<u32, INTx::Register>,
@@ -66,8 +68,10 @@ register_structs! {
         (0x048 => instr_mem: [WriteOnly<u32, INSTR_MEM::Register>; 32]),
         // State machine control
         (0x0c8 => sm_ctrl: [StateMachineControl; 4]),
-        // Interrupts
-        (0x128 => int: [InterruptControl; 2]),
+        // Raw interrupts
+        (0x128 => intr: ReadOnly<u32, INTx::Register>),
+        // Interrupt enable/force/status
+        (0x12c => int: [InterruptControl; 2]),
 
         (0x144 => @END),
     }
@@ -215,9 +219,11 @@ const PIO0: StaticRef<PIORegisters> = unsafe { StaticRef::new(PIO0_BASE_ADDRESS 
 const PIO1: StaticRef<PIORegisters> = unsafe { StaticRef::new(PIO1_BASE_ADDRESS as *const PIORegisters) };
 
 /// FIFO to use for the MOV x, STATUS instruction in [`Parameters`].
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum StatusSelectFIFO {
+    /// Use the transmit FIFO.
     Transmit,
+    /// Use the receive FIFO.
     Receive,
 }
 
@@ -234,11 +240,12 @@ pub enum FIFOAllocation {
 
 /// Direction to shift data entering/leaving shift registers.
 #[derive(Clone, Copy)]
+#[repr(u32)]
 pub enum ShiftDirection {
     /// Shift data left.
-    Left,
+    Left = 0,
     /// Shift data right.
-    Right,
+    Right = 1,
 }
 
 /// Autopush/autopull configuration.
@@ -253,6 +260,10 @@ pub enum Autoshift {
 /// Configuration for a PIO block.
 #[derive(Clone, Copy)]
 pub struct Parameters {
+    // CLOCKDIV
+    /// Clock divider for the state machine; 16-bit integer, 8-bit fractional.
+    pub clock_divider: (u16, u8),
+
     // EXECCTRL
     /// Whether to use the MSB of delay/side-set field to make side-setting optional.
     ///
@@ -315,6 +326,7 @@ impl Default for Parameters {
     /// These numbers are meant to be a safe default and not necessarily a usable default.
     fn default() -> Parameters {
         Parameters {
+            clock_divider: (0, 0),
             side_set_enables: false,
             side_set_pindir: false,
             jmp_pin: 0,
@@ -341,51 +353,165 @@ impl Default for Parameters {
     }
 }
 
+/// PIO block identifier.
+///
+/// The PIOs have four interrupt lines:
+/// two lines for each of the two blocks.
+/// PIO0 controls PIO0_IRQ0 and PIO0_IRQ1,
+/// and PIO1 controls PIO1_IRQ0 and PIO1_IRQ1.
+/// The pair of this type and [`InterruptLine`] identify one of the four interrupt lines.
+#[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
+#[repr(u8)]
+pub enum BlockID {
+    PIO0 = 0,
+    PIO1 = 1,
+}
+
 /// PIO IRQ line.
 ///
 /// The PIOs have four interrupt lines:
 /// two lines for each of the two blocks.
 /// PIO0 controls PIO0_IRQ0 and PIO0_IRQ1,
 /// and PIO1 controls PIO1_IRQ0 and PIO1_IRQ1.
+/// The pair of this type and [`BlockID`] identify one of the four interrupt lines.
 #[derive(Clone, Copy)]
 #[allow(non_camel_case_types)]
+#[repr(u8)]
 pub enum InterruptLine {
-    PIO0IRQ0,
-    PIO0IRQ1,
-    PIO1IRQ0,
-    PIO1IRQ1,
+    IRQ0 = 0,
+    IRQ1 = 1,
+}
+
+#[derive(Clone, Copy)]
+#[repr(u8)]
+/// PIO state machine identifier.
+pub enum StateMachine {
+    /// State machine 0.
+    SM0 = 0,
+    /// State machine 1.
+    SM1 = 1,
+    /// State machine 2.
+    SM2 = 2,
+    /// State machine 3.
+    SM3 = 3,
 }
 
 /// Interrupt context information.
 #[derive(Clone, Copy)]
-pub enum InterruptReason {
+pub enum Interrupt {
     /// A state machine raised an interrupt.
-    Flag(u8),
+    Flag(StateMachine),
     /// A state machine's transmission FIFO has available space.
-    TransmitNotFull(u8),
+    TransmitNotFull(StateMachine),
     /// A state machine's reception FIFO has new data available.
-    ReceiveNotEmpty(u8),
+    ReceiveNotEmpty(StateMachine),
 }
 
 /// Handler to receive notice of a PIO block's events.
 pub trait PIOBlockClient {
     /// Handler called by [`PIOBlock`] when the PIO peripheral raises an interrupt.
-    ///
-    ///
     fn interrupt_raised(&self, pio_block: &PIOBlock);
 }
 
 /// PIO peripheral instance.
 pub struct PIOBlock {
-    base_address: StaticRef<PIORegisters>,
+    registers: StaticRef<PIORegisters>,
     client: OptionalCell<&'static dyn PIOBlockClient>,
 }
 
 impl PIOBlock {
+    /// Set up the PIO block state machines.
+    fn configure(&self,
+                 instructions: &[u16],
+                 sm_params: &[&Parameters; 4],
+                 interrupt_when: &[Interrupt],
+                 interrupt_on: InterruptLine)
+    {
+        for sm_no in 0..4 {
+            let params = sm_params[sm_no];
+
+            // CLKDIV register setup.
+            let clkdiv =
+                SM_CLKDIV::INT.val(params.clock_divider.0 as u32).value
+                | SM_CLKDIV::FRAC.val(params.clock_divider.1 as u32).value;
+
+            // EXECCTRL register setup.
+            let execctrl =
+                SM_EXECCTRL::SIDE_EN.val(if params.side_set_enables { 1 } else { 0 }).value
+                | SM_EXECCTRL::SIDE_PINDIR.val(if params.side_set_pindir { 1 } else { 0 }).value
+                | SM_EXECCTRL::JMP_PIN.val(params.jmp_pin as u32).value
+                | SM_EXECCTRL::OUT_EN_SEL.val(params.out_enable_bit as u32).value
+                | SM_EXECCTRL::INLINE_OUT_EN.val(if params.inline_out_enable { 1 } else { 0 }).value
+                | SM_EXECCTRL::OUT_STICKY.val(if params.out_sticky { 1 } else { 0 }).value
+                | SM_EXECCTRL::WRAP_TOP.val(params.wrap_top as u32).value
+                | SM_EXECCTRL::WRAP_BOTTOM.val(params.wrap_bottom as u32).value
+                | SM_EXECCTRL::STATUS_SEL.val(if params.status_source == StatusSelectFIFO::Transmit { 0 } else { 1 }).value
+                | SM_EXECCTRL::STATUS_N.val(params.status_source_level as u32).value;
+
+            // SHIFTCTRL
+            let (fjoin_rx, fjoin_tx) = match params.fifo_allocation {
+                FIFOAllocation::Balanced => (0, 0),
+                FIFOAllocation::Receive => (1, 0),
+                FIFOAllocation::Transmit => (0, 1),
+            };
+            let (autopull, pull_threshold) = match params.autopull {
+                Autoshift::Off => (0, 0),
+                Autoshift::On(threshold) => (1, threshold),
+            };
+            let (autopush, push_threshold) = match params.autopush {
+                Autoshift::Off => (0, 0),
+                Autoshift::On(threshold) => (1, threshold),
+            };
+
+            let shiftctrl =
+                SM_SHIFTCTRL::FJOIN_RX.val(fjoin_rx).value
+                | SM_SHIFTCTRL::FJOIN_TX.val(fjoin_tx).value
+                | SM_SHIFTCTRL::PULL_THRESH.val(pull_threshold as u32).value
+                | SM_SHIFTCTRL::PUSH_THRESH.val(push_threshold as u32).value
+                | SM_SHIFTCTRL::OUT_SHIFTDIR.val(params.osr_direction as u32).value
+                | SM_SHIFTCTRL::IN_SHIFTDIR.val(params.isr_direction as u32).value
+                | SM_SHIFTCTRL::AUTOPULL.val(autopull).value
+                | SM_SHIFTCTRL::AUTOPUSH.val(autopush).value;
+
+            let pinctrl =
+                SM_PINCTRL::SIDESET_COUNT.val(params.side_set_count as u32).value
+                | SM_PINCTRL::SET_COUNT.val(params.set_count as u32).value
+                | SM_PINCTRL::OUT_COUNT.val(params.out_count as u32).value
+                | SM_PINCTRL::IN_BASE.val(params.in_base_pin as u32).value
+                | SM_PINCTRL::SIDESET_BASE.val(params.side_set_base_pin as u32).value
+                | SM_PINCTRL::SET_BASE.val(params.set_base_pin as u32).value
+                | SM_PINCTRL::OUT_BASE.val(params.out_base_pin as u32).value;
+
+            // Apply settings to registers.
+            self.registers.sm_ctrl[sm_no].clkdiv.set(clkdiv);
+            self.registers.sm_ctrl[sm_no].execctrl.set(execctrl);
+            self.registers.sm_ctrl[sm_no].shiftctrl.set(shiftctrl);
+            self.registers.sm_ctrl[sm_no].pinctrl.set(pinctrl);
+        }
+
+        // Write instructions to instruction memory.
+        for (idx, instr) in (0..32).zip(instructions) {
+            self.registers.instr_mem[idx].set(*instr as u32)
+        }
+
+        // Enable the requested interrupt reasons.
+        let mut inte = 0;
+        for reason in interrupt_when {
+            inte |= match reason {
+                Interrupt::Flag(sm_id) => 1 << (8 + *sm_id as u8),
+                Interrupt::TransmitNotFull(sm_id) => 1 << (4 + *sm_id as u8),
+                Interrupt::ReceiveNotEmpty(sm_id) => 1 << (0 + *sm_id as u8),
+            };
+        }
+
+        self.registers.int[interrupt_on as usize].inte.set(inte);
+    }
+
     /// Returns the reason(s) for an interrupt.
     ///
     /// A client may call this function multiple times until it returns `None`.
-    pub fn next_pending(&self) -> Option<InterruptReason> {
+    pub fn next_pending(&self) -> Option<Interrupt> {
         unimplemented!()
     }
 
@@ -397,20 +523,22 @@ impl PIOBlock {
 
 /// PIO instance.
 pub struct PIO {
+    allocated: Cell<u8>,
     pio_blocks: [PIOBlock; 2],
 }
 
 impl PIO {
     /// Create a new PIO interface.
-    pub const unsafe fn new() -> PIO {
+    pub const fn new() -> PIO {
         PIO {
+            allocated: Cell::new(0),
             pio_blocks: [
                 PIOBlock {
-                    base_address: PIO0,
+                    registers: PIO0,
                     client: OptionalCell::empty(),
                 },
                 PIOBlock {
-                    base_address: PIO0,
+                    registers: PIO0,
                     client: OptionalCell::empty(),
                 }
             ],
@@ -418,12 +546,27 @@ impl PIO {
     }
 
     /// Handle a PIO interrupt.
-    pub fn handle_interrupt(&self, irq_line: InterruptLine) {
-        match irq_line {
-            InterruptLine::PIO0IRQ0 | InterruptLine::PIO0IRQ1 =>
-                self.pio_blocks[0].handle_interrupt(irq_line),
-            InterruptLine::PIO1IRQ0 | InterruptLine::PIO1IRQ1 =>
-                self.pio_blocks[1].handle_interrupt(irq_line),
+    ///
+    /// Passes on interrupt information to the PIO block software context for handling
+    /// along with the interrupt line that is responsible for the interrupt.
+    pub fn handle_interrupt(&self, interrupting_block: BlockID, irq_line: InterruptLine) {
+        self.pio_blocks[interrupting_block as usize].handle_interrupt(irq_line);
+    }
+
+    /// Configure a PIO block.
+    pub fn configure(&'static self,
+                     instructions: &[u16],
+                     params: &[&Parameters; 4],
+                     interrupt_when: &[Interrupt],
+                     interrupt_on: InterruptLine) -> Result<&'static PIOBlock, ErrorCode>
+    {
+        let block_no = self.allocated.get();
+        if block_no as usize >= self.pio_blocks.len() {
+            Err(ErrorCode::BUSY)
+        } else {
+            let pio_block = &self.pio_blocks[self.allocated.get() as usize];
+            pio_block.configure(instructions, params, interrupt_when, interrupt_on);
+            Ok(pio_block)
         }
     }
 }

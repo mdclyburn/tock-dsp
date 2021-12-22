@@ -211,19 +211,19 @@ impl InterruptService<()> for Rp2040DefaultPeripherals<'_> {
                 true
             }
             interrupts::PIO0_IRQ_0 => {
-                self.pio.handle_interrupt(pio::InterruptLine::PIO0IRQ0);
+                self.pio.handle_interrupt(pio::BlockID::PIO0, pio::InterruptLine::IRQ0);
                 true
             }
             interrupts::PIO0_IRQ_1 => {
-                self.pio.handle_interrupt(pio::InterruptLine::PIO0IRQ1);
+                self.pio.handle_interrupt(pio::BlockID::PIO0, pio::InterruptLine::IRQ1);
                 true
             }
             interrupts::PIO1_IRQ_0 => {
-                self.pio.handle_interrupt(pio::InterruptLine::PIO1IRQ0);
+                self.pio.handle_interrupt(pio::BlockID::PIO1, pio::InterruptLine::IRQ0);
                 true
             }
             interrupts::PIO1_IRQ_1 => {
-                self.pio.handle_interrupt(pio::InterruptLine::PIO1IRQ1);
+                self.pio.handle_interrupt(pio::BlockID::PIO1, pio::InterruptLine::IRQ1);
                 true
             }
             _ => false,

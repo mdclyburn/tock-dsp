@@ -3,6 +3,7 @@ use kernel::Kernel;
 use kernel::dsp::engine::DSPEngine;
 use kernel::dsp::link::{Chain, Link};
 
+use pio_proc::pio;
 use rp2040;
 use rp2040::gpio::SIO;
 
@@ -59,6 +60,16 @@ pub unsafe fn launch() -> ! {
     interrupt::configure(board_resources);
 
     let aspk = allocate_aspk_resources();
+
+    let i2s_pio = pio!(
+        32,
+        "
+set pindirs, 1
+.wrap_target
+set pins, 0 [31]
+set pins, 1 [31]
+.wrap
+");
 
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,
