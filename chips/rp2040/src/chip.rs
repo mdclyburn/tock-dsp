@@ -10,6 +10,7 @@ use crate::clocks::Clocks;
 use crate::dma::{self, DMA};
 use crate::gpio::{RPPins, SIO};
 use crate::interrupts;
+use crate::pio::{self, PIO};
 use crate::psm::PowerOnStateMachine;
 use crate::resets::Resets;
 use crate::sio::FIFO;
@@ -140,6 +141,7 @@ pub struct Rp2040DefaultPeripherals<'a> {
     pub psm: PowerOnStateMachine,
     pub fifo: FIFO,
     pub dma: DMA,
+    pub pio: PIO,
 }
 
 impl<'a> Rp2040DefaultPeripherals<'a> {
@@ -159,6 +161,7 @@ impl<'a> Rp2040DefaultPeripherals<'a> {
             psm: PowerOnStateMachine::new(),
             fifo: FIFO::new(),
             dma: DMA::new(),
+            pio: PIO::new(),
         }
     }
 
@@ -205,6 +208,22 @@ impl InterruptService<()> for Rp2040DefaultPeripherals<'_> {
             }
             interrupts::DMA_IRQ_1 => {
                 self.dma.handle_interrupt(dma::InterruptLine::IRQ1);
+                true
+            }
+            interrupts::PIO0_IRQ_0 => {
+                self.pio.handle_interrupt(pio::InterruptLine::PIO0IRQ0);
+                true
+            }
+            interrupts::PIO0_IRQ_1 => {
+                self.pio.handle_interrupt(pio::InterruptLine::PIO0IRQ1);
+                true
+            }
+            interrupts::PIO1_IRQ_0 => {
+                self.pio.handle_interrupt(pio::InterruptLine::PIO1IRQ0);
+                true
+            }
+            interrupts::PIO1_IRQ_1 => {
+                self.pio.handle_interrupt(pio::InterruptLine::PIO1IRQ1);
                 true
             }
             _ => false,
