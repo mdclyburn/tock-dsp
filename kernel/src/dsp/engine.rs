@@ -22,10 +22,14 @@ pub struct DSPEngine {
     in_buffers: [AudioBuffer; config::SAMPLE_BUFFERS],
     /// Buffers for outgoing audio samples.
     out_buffers: [AudioBuffer; config::SAMPLE_BUFFERS],
-    /// ADC DMA channel number.
-    adc_dma_channel_no: Cell<u8>,
+    /// Source DMA channel number.
+    source_dma_channel_no: Cell<u8>,
+    /// Sink DMA channel number.
+    sink_dma_channel_no: Cell<u8>,
     /// Cyclical input buffer iterator.
     in_buffer_iter: MapCell<CyclicBufferIter>,
+    /// Cyclical output buffer iterator.
+    out_buffer_iter: MapCell<CyclicBufferIter>,
 }
 
 impl DSPEngine {
@@ -38,8 +42,10 @@ impl DSPEngine {
             out_buffers: [AudioBuffer::new(),
                           AudioBuffer::new(),
                           AudioBuffer::new()],
-            adc_dma_channel_no: Cell::new(99),
+            source_dma_channel_no: Cell::new(99),
+            sink_dma_channel_no: Cell::new(99),
             in_buffer_iter: MapCell::empty(),
+            out_buffer_iter: MapCell::empty(),
         }
     }
 
@@ -52,22 +58,20 @@ impl DSPEngine {
     /// Once configured, the DSP side of the kernel will respond to a short list of interrupts:
     /// SIO, for interprocessor messaging;
     /// DMA, for sample processing and output.
-    pub fn run<C: Chip,
-               R: KernelResources<C>,
-               F: time::Frequency,
+    pub fn run<F: time::Frequency,
                T: time::Ticks>(
         &'static self,
-        _chip: &C,
-        _resources: &R,
         dma: &'static dyn DMA,
         time: &dyn Time<Frequency = F, Ticks = T>,
+        source: dma::SourcePeripheral,
+        sink: dma::TargetPeripheral,
         chain: &Chain,
     ) -> !
     {
-        // Configure ADC sampling flow.
-        let adc_dma_channel = {
+        // Configure sample input DMA.
+        let source_dma_channel = {
             let params = dma::Parameters {
-                kind: dma::TransferKind::PeripheralToMemory(dma::SourcePeripheral::ADC, 0),
+                kind: dma::TransferKind::PeripheralToMemory(source, 0),
                 transfer_count: config::NO_SAMPLES,
                 // Need to optimize this to allow transferring a halfword.
                 transfer_size: dma::TransferSize::Word,
@@ -75,22 +79,39 @@ impl DSPEngine {
                 increment_on_write: true,
                 high_priority: true,
             };
-            dma.configure(&params).expect("failed configuring DMA channel")
+            dma.configure(&params).expect("failed configuring source DMA channel")
         };
-        adc_dma_channel.set_client(self);
-        self.adc_dma_channel_no.set(adc_dma_channel.channel_no() as u8);
-        // Configure output.
-        // TODO: implement.
+        source_dma_channel.set_client(self);
+        self.source_dma_channel_no.set(source_dma_channel.channel_no() as u8);
+
+        // Configure sample output DMA.
+        let sink_dma_channel = {
+            let params = dma::Parameters {
+                kind: dma::TransferKind::MemoryToPeripheral(0, sink),
+                transfer_count: config::NO_SAMPLES,
+                transfer_size: dma::TransferSize::Word,
+                increment_on_read: true,
+                increment_on_write: false,
+                high_priority: true,
+            };
+            dma.configure(&params).expect("failed configuring sink DMA channel")
+        };
+        sink_dma_channel.set_client(self);
+        self.sink_dma_channel_no.set(sink_dma_channel.channel_no() as u8);
 
         // Create cyclic iterators over the audio buffers.
         let mut process_in_buffer_it = self.in_buffers.iter().cycle();
         let mut process_out_buffer_it = self.out_buffers.iter().cycle();
 
+        let out_buffer_it = self.out_buffers.iter().cycle().peekable();
+        self.out_buffer_iter.put(out_buffer_it);
+
         // Start sample collection.
-        self.initiate_sampling(adc_dma_channel)
+        self.initiate_sampling(source_dma_channel)
             .expect("failed to start ADC sampling DMA");
 
         let mut t_post = 1;
+        let mut playback_started = false;
         // Depending on the length of the signal chain and the processing strategy,
         // the samples go back and forth between buffers as we go through the chain.
         // If there are an even number of processors in the chain,
@@ -135,12 +156,18 @@ impl DSPEngine {
 
             // Replace the buffers.
             // The output buffer needs to go to BufferState::Ready when we implement playing processed samples.
-            if exchange_buffers_after_processing {
+            let other_buf = if exchange_buffers_after_processing {
                 input_buffer.put(proc_buf_a, BufferState::Free);
-                output_buffer.put(proc_buf_b, BufferState::Free);
+                proc_buf_b
             } else {
                 input_buffer.put(proc_buf_b, BufferState::Free);
-                output_buffer.put(proc_buf_a, BufferState::Free);
+                proc_buf_a
+            };
+
+            if !playback_started {
+                sink_dma_channel.start(other_buf);
+            } else {
+                input_buffer.put(other_buf, BufferState::Ready);
             }
         }
     }
@@ -163,14 +190,14 @@ impl dma::DMAClient for DSPEngine {
     /// In both cases, we replace the buffer to its `AudioBuffer` container and initiate another transfer.
     fn transfer_done(&self, channel: &dyn DMAChannel, buffer: &'static mut [usize]) {
         let channel_no = channel.channel_no() as u8;
-        if channel_no == self.adc_dma_channel_no.get() {
+        if channel_no == self.source_dma_channel_no.get() {
             // The transfer that completed is for the ADC samples.
             self.in_buffer_iter.map(move |iter| {
                 // Replace the buffer as an unprocessed buffer.
                 let vacant_container = iter.peek().unwrap();
                 vacant_container.put(buffer, BufferState::Unprocessed);
 
-                // Re-initiate transfer from the ADC to the next buffer.
+                // Re-initiate transfer from the source to the next buffer.
                 // This buffer must be free, otherwise, that means we fail;
                 // we've caught up to the oldest buffer that still hasn't completed processing.
                 // We hard-fail here because it means the DSP cycle is delayed.
@@ -185,7 +212,29 @@ impl dma::DMAClient for DSPEngine {
                 } else {
                     let buffer = next_container.take(BufferState::Collecting).unwrap();
                     channel.start(buffer)
-                        .expect("could not start sampling DMA channel");
+                        .expect("could not start DMA from source");
+                }
+            });
+        } else if channel_no == self.sink_dma_channel_no.get() {
+            // The transfer that completed is for the sink.
+            self.out_buffer_iter.map(move |iter| {
+                // Replace the buffer as a free buffer.
+                let vacant_container = iter.peek().unwrap();
+                vacant_container.put(buffer, BufferState::Free);
+
+                // Re-initiate transfer to the sink from the next buffer.
+                // This buffer must be ready, otherwise, that means playback is noncontiguous;
+                // we've completed playback of the last buffer and no new buffers are available.
+                let _ = iter.next();
+                let next_container = iter.peek().unwrap();
+                if next_container.state() != BufferState::Ready {
+                    // We panic here for now, but this should change to a debug! call
+                    // as long as this doesn't happen too frequently.
+                    panic!("Playback has emptied all buffers!");
+                } else {
+                    let buffer = next_container.take(BufferState::Playing).unwrap();
+                    channel.start(buffer)
+                        .expect("could not start DMA to sink");
                 }
             });
         } else {

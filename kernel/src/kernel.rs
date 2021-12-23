@@ -481,20 +481,18 @@ impl Kernel {
         }
     }
 
-    pub fn dsp_loop<C: Chip,
-                    R: KernelResources<C>,
-                    F: hil::time::Frequency,
+    pub fn dsp_loop<F: hil::time::Frequency,
                     T: hil::time::Ticks>(
         &self,
-        resources: &R,
-        chip: &C,
         dsp: &'static DSPEngine,
         dma: &'static dyn hil::dma::DMA,
         time: &dyn hil::time::Time<Frequency = F, Ticks = T>,
+        source: hil::dma::SourcePeripheral,
+        sink: hil::dma::TargetPeripheral,
         processing_chain: &dsp::link::Chain,
     ) -> !
     {
-        dsp.run(chip, resources, dma, time, processing_chain);
+        dsp.run(dma, time, source, sink, processing_chain);
     }
 
     /// Transfer control from the kernel to a userspace process.
