@@ -196,7 +196,7 @@ impl Adc {
         self.status.set(ADCStatus::Continuous);
         self.channel.set(channel);
 
-        let clock_freq = 48_000_000;
+        let clock_freq = 125_000_000;
         let cycles_per_sample = clock_freq / frequency;
         let cycles_per_sample = if cycles_per_sample < 95 { 95 } else { cycles_per_sample };
         let cycles_per_sample = if cycles_per_sample > u16::MAX as u32 { u16::MAX as u32 } else { cycles_per_sample };
