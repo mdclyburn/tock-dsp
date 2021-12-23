@@ -4,9 +4,9 @@ use kernel::dsp::engine::DSPEngine;
 use kernel::dsp::link::{Chain, Link};
 
 use dsp::effects;
-use pio_proc::pio;
 use rp2040;
 use rp2040::gpio::SIO;
+use rp2040::pio::{self, PIO, PIOBlock};
 
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::interrupt;
@@ -62,15 +62,7 @@ pub unsafe fn launch() -> ! {
 
     let aspk = allocate_aspk_resources();
 
-    let i2s_pio = pio!(
-        32,
-        "
-set pindirs, 1
-.wrap_target
-set pins, 0 [31]
-set pins, 1 [31]
-.wrap
-");
+    let i2s = configure_pio(board_resources.pio);
 
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,
@@ -100,4 +92,39 @@ fn receive_resources(sio: &SIO) -> (&'static Kernel,
          (resources[1] as *const RaspberryPiPico).as_ref::<'static>().unwrap(),
          (resources[2] as *const RP2040Chip).as_ref::<'static>().unwrap())
     }
+}
+
+#[inline(never)]
+fn configure_pio(pio: &'static PIO) -> &'static PIOBlock {
+    let i2s_pio = pio_proc::pio!(
+        32,
+        "
+set pindirs, 1
+.wrap_target
+set pins, 0 [1]
+set pins, 1 [1]
+.wrap
+");
+    let parameters = {
+    let default = pio::Parameters::default();
+        pio::Parameters {
+            clock_divider: (3000, 0),
+            osr_direction: pio::ShiftDirection::Left,
+            set_count: 1,
+            out_count: 1,
+            out_sticky: true,
+            wrap_top: i2s_pio.program.wrap.source,
+            wrap_bottom: i2s_pio.program.wrap.target,
+            autopull: pio::Autoshift::On(16),
+            set_base_pin: 16,
+            ..default
+        }
+    };
+
+    pio.configure(
+        &i2s_pio.program.code,
+        &[Some(&parameters), None, None, None],
+        &[pio::Interrupt::ReceiveNotEmpty(pio::StateMachine::SM0)],
+        pio::InterruptLine::IRQ0)
+        .unwrap()
 }

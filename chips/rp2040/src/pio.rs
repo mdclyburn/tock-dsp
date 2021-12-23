@@ -6,7 +6,7 @@ use core::default::Default;
 use cortexm0p::nvic::Nvic;
 
 use kernel::errorcode::ErrorCode;
-use kernel::utilities::cells::{NumericCellExt, OptionalCell};
+use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{
     ReadWriteable,
     Readable,
@@ -424,71 +424,77 @@ impl PIOBlock {
     /// Set up the PIO block state machines.
     fn configure(&self,
                  instructions: &[u16],
-                 sm_params: &[&Parameters; 4],
+                 sm_params: &[Option<&Parameters>; 4],
                  interrupt_when: &[Interrupt],
                  interrupt_on: InterruptLine)
     {
+        // SM_ENABLE mask built by the loop.
+        let mut enabled_machines = 0;
         for sm_no in 0..4 {
-            let params = sm_params[sm_no];
+            enabled_machines >>= 1;
+            if let Some(params) = sm_params[sm_no] {
+                // CLKDIV register setup.
+                let clkdiv =
+                    SM_CLKDIV::INT.val(params.clock_divider.0 as u32).value
+                    | SM_CLKDIV::FRAC.val(params.clock_divider.1 as u32).value;
 
-            // CLKDIV register setup.
-            let clkdiv =
-                SM_CLKDIV::INT.val(params.clock_divider.0 as u32).value
-                | SM_CLKDIV::FRAC.val(params.clock_divider.1 as u32).value;
+                // EXECCTRL register setup.
+                let execctrl =
+                    SM_EXECCTRL::SIDE_EN.val(if params.side_set_enables { 1 } else { 0 }).value
+                    | SM_EXECCTRL::SIDE_PINDIR.val(if params.side_set_pindir { 1 } else { 0 }).value
+                    | SM_EXECCTRL::JMP_PIN.val(params.jmp_pin as u32).value
+                    | SM_EXECCTRL::OUT_EN_SEL.val(params.out_enable_bit as u32).value
+                    | SM_EXECCTRL::INLINE_OUT_EN.val(if params.inline_out_enable { 1 } else { 0 }).value
+                    | SM_EXECCTRL::OUT_STICKY.val(if params.out_sticky { 1 } else { 0 }).value
+                    | SM_EXECCTRL::WRAP_TOP.val(params.wrap_top as u32).value
+                    | SM_EXECCTRL::WRAP_BOTTOM.val(params.wrap_bottom as u32).value
+                    | SM_EXECCTRL::STATUS_SEL.val(if params.status_source == StatusSelectFIFO::Transmit { 0 } else { 1 }).value
+                    | SM_EXECCTRL::STATUS_N.val(params.status_source_level as u32).value;
 
-            // EXECCTRL register setup.
-            let execctrl =
-                SM_EXECCTRL::SIDE_EN.val(if params.side_set_enables { 1 } else { 0 }).value
-                | SM_EXECCTRL::SIDE_PINDIR.val(if params.side_set_pindir { 1 } else { 0 }).value
-                | SM_EXECCTRL::JMP_PIN.val(params.jmp_pin as u32).value
-                | SM_EXECCTRL::OUT_EN_SEL.val(params.out_enable_bit as u32).value
-                | SM_EXECCTRL::INLINE_OUT_EN.val(if params.inline_out_enable { 1 } else { 0 }).value
-                | SM_EXECCTRL::OUT_STICKY.val(if params.out_sticky { 1 } else { 0 }).value
-                | SM_EXECCTRL::WRAP_TOP.val(params.wrap_top as u32).value
-                | SM_EXECCTRL::WRAP_BOTTOM.val(params.wrap_bottom as u32).value
-                | SM_EXECCTRL::STATUS_SEL.val(if params.status_source == StatusSelectFIFO::Transmit { 0 } else { 1 }).value
-                | SM_EXECCTRL::STATUS_N.val(params.status_source_level as u32).value;
+                // SHIFTCTRL
+                let (fjoin_rx, fjoin_tx) = match params.fifo_allocation {
+                    FIFOAllocation::Balanced => (0, 0),
+                    FIFOAllocation::Receive => (1, 0),
+                    FIFOAllocation::Transmit => (0, 1),
+                };
+                let (autopull, pull_threshold) = match params.autopull {
+                    Autoshift::Off => (0, 0),
+                    Autoshift::On(threshold) => (1, threshold),
+                };
+                let (autopush, push_threshold) = match params.autopush {
+                    Autoshift::Off => (0, 0),
+                    Autoshift::On(threshold) => (1, threshold),
+                };
 
-            // SHIFTCTRL
-            let (fjoin_rx, fjoin_tx) = match params.fifo_allocation {
-                FIFOAllocation::Balanced => (0, 0),
-                FIFOAllocation::Receive => (1, 0),
-                FIFOAllocation::Transmit => (0, 1),
-            };
-            let (autopull, pull_threshold) = match params.autopull {
-                Autoshift::Off => (0, 0),
-                Autoshift::On(threshold) => (1, threshold),
-            };
-            let (autopush, push_threshold) = match params.autopush {
-                Autoshift::Off => (0, 0),
-                Autoshift::On(threshold) => (1, threshold),
-            };
+                let shiftctrl =
+                    SM_SHIFTCTRL::FJOIN_RX.val(fjoin_rx).value
+                    | SM_SHIFTCTRL::FJOIN_TX.val(fjoin_tx).value
+                    | SM_SHIFTCTRL::PULL_THRESH.val(pull_threshold as u32).value
+                    | SM_SHIFTCTRL::PUSH_THRESH.val(push_threshold as u32).value
+                    | SM_SHIFTCTRL::OUT_SHIFTDIR.val(params.osr_direction as u32).value
+                    | SM_SHIFTCTRL::IN_SHIFTDIR.val(params.isr_direction as u32).value
+                    | SM_SHIFTCTRL::AUTOPULL.val(autopull).value
+                    | SM_SHIFTCTRL::AUTOPUSH.val(autopush).value;
 
-            let shiftctrl =
-                SM_SHIFTCTRL::FJOIN_RX.val(fjoin_rx).value
-                | SM_SHIFTCTRL::FJOIN_TX.val(fjoin_tx).value
-                | SM_SHIFTCTRL::PULL_THRESH.val(pull_threshold as u32).value
-                | SM_SHIFTCTRL::PUSH_THRESH.val(push_threshold as u32).value
-                | SM_SHIFTCTRL::OUT_SHIFTDIR.val(params.osr_direction as u32).value
-                | SM_SHIFTCTRL::IN_SHIFTDIR.val(params.isr_direction as u32).value
-                | SM_SHIFTCTRL::AUTOPULL.val(autopull).value
-                | SM_SHIFTCTRL::AUTOPUSH.val(autopush).value;
+                let pinctrl =
+                    SM_PINCTRL::SIDESET_COUNT.val(params.side_set_count as u32).value
+                    | SM_PINCTRL::SET_COUNT.val(params.set_count as u32).value
+                    | SM_PINCTRL::OUT_COUNT.val(params.out_count as u32).value
+                    | SM_PINCTRL::IN_BASE.val(params.in_base_pin as u32).value
+                    | SM_PINCTRL::SIDESET_BASE.val(params.side_set_base_pin as u32).value
+                    | SM_PINCTRL::SET_BASE.val(params.set_base_pin as u32).value
+                    | SM_PINCTRL::OUT_BASE.val(params.out_base_pin as u32).value;
 
-            let pinctrl =
-                SM_PINCTRL::SIDESET_COUNT.val(params.side_set_count as u32).value
-                | SM_PINCTRL::SET_COUNT.val(params.set_count as u32).value
-                | SM_PINCTRL::OUT_COUNT.val(params.out_count as u32).value
-                | SM_PINCTRL::IN_BASE.val(params.in_base_pin as u32).value
-                | SM_PINCTRL::SIDESET_BASE.val(params.side_set_base_pin as u32).value
-                | SM_PINCTRL::SET_BASE.val(params.set_base_pin as u32).value
-                | SM_PINCTRL::OUT_BASE.val(params.out_base_pin as u32).value;
+                // Apply settings to registers.
+                self.registers.sm_ctrl[sm_no].clkdiv.set(clkdiv);
+                self.registers.sm_ctrl[sm_no].execctrl.set(execctrl);
+                self.registers.sm_ctrl[sm_no].shiftctrl.set(shiftctrl);
+                self.registers.sm_ctrl[sm_no].pinctrl.set(pinctrl);
 
-            // Apply settings to registers.
-            self.registers.sm_ctrl[sm_no].clkdiv.set(clkdiv);
-            self.registers.sm_ctrl[sm_no].execctrl.set(execctrl);
-            self.registers.sm_ctrl[sm_no].shiftctrl.set(shiftctrl);
-            self.registers.sm_ctrl[sm_no].pinctrl.set(pinctrl);
+                enabled_machines |= (1 << 3);
+            }
         }
+        kernel::debug!("enabled machines: {:#010X}", enabled_machines);
 
         // Write instructions to instruction memory.
         for (idx, instr) in (0..32).zip(instructions) {
@@ -506,6 +512,9 @@ impl PIOBlock {
         }
 
         self.registers.int[interrupt_on as usize].inte.set(inte);
+
+        // Enable the state machines that have configurations.
+        self.registers.ctrl.modify(CTRL::SM_ENABLE.val(enabled_machines));
     }
 
     /// Returns the reason(s) for an interrupt.
@@ -556,7 +565,7 @@ impl PIO {
     /// Configure a PIO block.
     pub fn configure(&'static self,
                      instructions: &[u16],
-                     params: &[&Parameters; 4],
+                     params: &[Option<&Parameters>; 4],
                      interrupt_when: &[Interrupt],
                      interrupt_on: InterruptLine) -> Result<&'static PIOBlock, ErrorCode>
     {
@@ -564,8 +573,10 @@ impl PIO {
         if block_no as usize >= self.pio_blocks.len() {
             Err(ErrorCode::BUSY)
         } else {
-            let pio_block = &self.pio_blocks[self.allocated.get() as usize];
+            let pio_block_idx = self.allocated.get();
+            let pio_block = &self.pio_blocks[pio_block_idx as usize];
             pio_block.configure(instructions, params, interrupt_when, interrupt_on);
+            self.allocated.set(pio_block_idx+1);
             Ok(pio_block)
         }
     }

@@ -74,6 +74,7 @@ pub struct RaspberryPiPico {
         >,
     dma: &'static rp2040::dma::DMA,
     gpio: &'static capsules::gpio::GPIO<'static, RPGpioPin<'static>>,
+    pio: &'static rp2040::pio::PIO,
     fifo: &'static rp2040::sio::FIFO,
     hw_sync_access: &'static sync::HardwareSyncBlockAccess,
     ipm: &'static ipm::ASPKMessaging,
@@ -416,6 +417,14 @@ pub unsafe fn main() {
     kernel::debug::use_semaphore(sem_debug_write);
     components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
+    // Configure I/O for DSP.
+    {
+        use kernel::hil::gpio::Configure;
+        let pin = peripherals.pins.get_pin(RPGpio::GPIO16);
+        pin.set_function(GpioFunction::PIO0);
+        pin.make_output();
+    }
+
     let gpio = GpioComponent::new(
         board_kernel,
         capsules::gpio::DRIVER_NUM,
@@ -530,6 +539,7 @@ pub unsafe fn main() {
         alarm,
         dma,
         gpio,
+        pio: &peripherals.pio,
         fifo: &peripherals.fifo,
         hw_sync_access,
         ipm: aspk_messaging,

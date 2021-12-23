@@ -857,9 +857,8 @@ impl hil::gpio::Configure for RPGpioPin<'_> {
     }
     /// Set output mode
     fn make_output(&self) -> hil::gpio::Configuration {
-        self.set_function(GpioFunction::SIO);
-        self.activate_pads();
-        self.sio_registers.gpio_oe_set.set(1 << self.pin);
+        self.gpio_pad_registers.gpio_pad[self.pin].modify(GPIO_PAD::OD::CLEAR + GPIO_PAD::IE::CLEAR);
+        // self.sio_registers.gpio_oe_set.set(1 << self.pin);
         self.get_mode()
     }
     /// Disable pad output
