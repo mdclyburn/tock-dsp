@@ -21,7 +21,10 @@ pub enum SourcePeripheral {
 }
 
 #[derive(Copy, Clone)]
-pub enum TargetPeripheral {  }
+pub enum TargetPeripheral {
+    /// Hardware-dependent peripheral.
+    Custom(u8),
+}
 
 #[derive(Copy, Clone)]
 pub enum TransferKind {

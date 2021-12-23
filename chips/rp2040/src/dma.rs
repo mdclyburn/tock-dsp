@@ -442,8 +442,8 @@ impl DMA {
 
                     match options.kind {
                         TransferKind::MemoryToMemory(ra, wa) => (ra, wa),
-                        TransferKind::MemoryToPeripheral(_ra, _p) => unimplemented!(),
-                        TransferKind::PeripheralToMemory(p, wa) => (peripheral_source_address(p), wa),
+                        TransferKind::MemoryToPeripheral(ra, p) => (ra, map_target_peripheral(p).data_addr),
+                        TransferKind::PeripheralToMemory(p, wa) => (map_source_peripheral(p).data_addr, wa),
                     }
                 };
 
@@ -458,13 +458,13 @@ impl DMA {
                     use hil::dma::TransferKind;
                     use hil::dma::SourcePeripheral;
 
-                    if let TransferKind::PeripheralToMemory(source_peripheral, _write_addr) = options.kind {
-                        match source_peripheral {
-                            SourcePeripheral::ADC => TransferRequestSignal::ADC as u32,
-                        }
-                    } else {
+                    match options.kind {
+                        TransferKind::PeripheralToMemory(srcp, _wa) =>
+                            map_source_peripheral(srcp).treq as u32,
+                        TransferKind::MemoryToPeripheral(_ra, tgtp) =>
+                            map_target_peripheral(tgtp).treq as u32,
                         // Transfer proceeds as fast as possible.
-                        TransferRequestSignal::PERMANENT_REQUEST as u32
+                        _ => TransferRequestSignal::PERMANENT_REQUEST as u32,
                     }
                 };
 
@@ -505,8 +505,67 @@ impl hil::dma::DMA for DMA {
     }
 }
 
-const fn peripheral_source_address(p: hil::dma::SourcePeripheral) -> usize {
+/// Useful information about a peripheral.
+struct PeripheralInfo {
+    data_addr: usize,
+    treq: TransferRequestSignal,
+}
+
+/// Returns source peripheral information.
+fn map_source_peripheral(p: hil::dma::SourcePeripheral) -> PeripheralInfo {
     match p {
-        hil::dma::SourcePeripheral::ADC => 0x4004_C00C,
+        hil::dma::SourcePeripheral::ADC => PeripheralInfo {
+            data_addr: 0x4004_C00C,
+            treq: TransferRequestSignal::ADC,
+        },
+    }
+}
+
+/// Returns target peripheral information.
+fn map_target_peripheral(p: hil::dma::TargetPeripheral) -> PeripheralInfo {
+    match p {
+        hil::dma::TargetPeripheral::Custom(id) => match id {
+            // PIO0, SM0 TX FIFO.
+            0 => PeripheralInfo {
+                data_addr: 0x5020_0010,
+                treq: TransferRequestSignal::PIO0_TX0,
+            },
+            // PIO0, SM1 TX FIFO.
+            1 => PeripheralInfo {
+                data_addr: 0x5020_0014,
+                treq: TransferRequestSignal::PIO0_TX1,
+            },
+            // PIO0, SM2 TX FIFO.
+            2 => PeripheralInfo {
+                data_addr: 0x5020_0018,
+                treq: TransferRequestSignal::PIO0_TX2,
+            },
+            // PIO0, SM3 TX FIFO.
+            3 => PeripheralInfo {
+                data_addr: 0x5020_001C,
+                treq: TransferRequestSignal::PIO0_TX3,
+            },
+            // PIO1, SM0 TX FIFO.
+            4 => PeripheralInfo {
+                data_addr: 0x5030_0010,
+                treq: TransferRequestSignal::PIO1_TX0,
+            },
+            // PIO1, SM1 TX FIFO.
+            5 => PeripheralInfo {
+                data_addr: 0x5030_0014,
+                treq: TransferRequestSignal::PIO1_TX1,
+            },
+            // PIO1, SM2 TX FIFO.
+            6 => PeripheralInfo {
+                data_addr: 0x5030_0018,
+                treq: TransferRequestSignal::PIO1_TX2,
+            },
+            // PIO1, SM3 TX FIFO.
+            7 => PeripheralInfo {
+                data_addr: 0x5030_001C,
+                treq: TransferRequestSignal::PIO1_TX3,
+            },
+            _ => panic!("Undefined custom target peripheral #{}", id),
+        },
     }
 }
