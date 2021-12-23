@@ -421,8 +421,8 @@ pub unsafe fn main() {
     {
         use kernel::hil::gpio::Configure;
         let pin = peripherals.pins.get_pin(RPGpio::GPIO16);
-        pin.set_function(GpioFunction::PIO0);
         pin.make_output();
+        pin.set_function(GpioFunction::PIO0);
     }
 
     let gpio = GpioComponent::new(
