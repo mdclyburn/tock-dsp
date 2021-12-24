@@ -317,6 +317,9 @@ pub struct Parameters {
     pub set_base_pin: u8,
     /// First pin number mapped to the LSB of OUT data.
     pub out_base_pin: u8,
+
+    /// Initial pin direction configuration; a bit set means the pin is initially an output.
+    pub initial_pindir: u8,
 }
 
 impl Default for Parameters {
@@ -349,6 +352,7 @@ impl Default for Parameters {
             side_set_base_pin: 0,
             set_base_pin: 0,
             out_base_pin: 0,
+            initial_pindir: 0b00000,
         }
     }
 }
@@ -413,6 +417,9 @@ pub trait PIOBlockClient {
     /// Handler called by [`PIOBlock`] when the PIO peripheral raises an interrupt.
     fn interrupt_raised(&self, pio_block: &PIOBlock);
 }
+
+/// Binary-encoded SET.
+const ENC_INSTR_SET: u16 = 0b111_00000_000_00000;
 
 /// PIO peripheral instance.
 pub struct PIOBlock {
@@ -490,6 +497,13 @@ impl PIOBlock {
                 self.registers.sm_ctrl[sm_no].execctrl.set(execctrl);
                 self.registers.sm_ctrl[sm_no].shiftctrl.set(shiftctrl);
                 self.registers.sm_ctrl[sm_no].pinctrl.set(pinctrl);
+
+                // Configure the initial pin directions.
+                let initial_pindirs_instr =
+                    ENC_INSTR_SET
+                    | 0b000_00000_100_00000 // Set PINDIRS.
+                    | params.initial_pindir as u16;
+                self.registers.sm_ctrl[sm_no].instr.set(initial_pindirs_instr as u32);
 
                 enabled_machines |= (1 << 3);
             }
