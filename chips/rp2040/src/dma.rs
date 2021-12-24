@@ -299,6 +299,8 @@ impl Channel {
             } else {
                 panic!("Interrupt handler called but no there was no buffer.");
             }
+        } else {
+            panic!("No client to answer DMA channel {} callback.", self.channel_no);
         }
     }
 }
@@ -433,10 +435,6 @@ impl DMA {
     {
         for idx in 0..12 {
             if self.configs[idx].config.is_none() {
-                let mask = 1 << idx;
-                self.interrupt_registers.inte0.set(self.interrupt_registers.inte0.get() | mask);
-                self.interrupt_registers.inte1.set(self.interrupt_registers.inte1.get() | mask);
-
                 let (read_addr, write_addr) = {
                     use hil::dma::TransferKind;
 
@@ -478,6 +476,8 @@ impl DMA {
                     | CTRL::HIGH_PRIORITY.val(if options.high_priority { 1 } else { 0 }).value;
 
                 // Hard-code to use DMA_IRQ0 since HIL does not have an equivalent distinction.
+                let mask = 1 << idx;
+                self.interrupt_registers.inte0.set(self.interrupt_registers.inte0.get() | mask);
                 self.enable_interrupt(InterruptLine::IRQ0);
 
                 self.channel_registers[idx].ctrl.set(ctrl);
