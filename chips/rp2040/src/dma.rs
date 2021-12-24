@@ -416,7 +416,7 @@ impl DMA {
         let status = ints.get();
 
         for channel_idx in 0..NO_CHANNELS {
-            if (1 << channel_idx) & status == 1 {
+            if (1 << channel_idx) & status != 0 {
                 self.configs[channel_idx].handle_interrupt();
             }
         }
