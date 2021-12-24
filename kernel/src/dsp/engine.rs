@@ -30,6 +30,8 @@ pub struct DSPEngine {
     in_buffer_iter: MapCell<CyclicBufferIter>,
     /// Cyclical output buffer iterator.
     out_buffer_iter: MapCell<CyclicBufferIter>,
+    /// Whether playback DMA is suspended due to ready buffers being unavailable.
+    playback_stalled: Cell<bool>,
 }
 
 impl DSPEngine {
@@ -38,14 +40,19 @@ impl DSPEngine {
         DSPEngine {
             in_buffers: [AudioBuffer::new(),
                          AudioBuffer::new(),
+                         AudioBuffer::new(),
+                         AudioBuffer::new(),
                          AudioBuffer::new()],
             out_buffers: [AudioBuffer::new(),
+                          AudioBuffer::new(),
+                          AudioBuffer::new(),
                           AudioBuffer::new(),
                           AudioBuffer::new()],
             source_dma_channel_no: Cell::new(99),
             sink_dma_channel_no: Cell::new(99),
             in_buffer_iter: MapCell::empty(),
             out_buffer_iter: MapCell::empty(),
+            playback_stalled: Cell::new(true),
         }
     }
 
@@ -58,9 +65,11 @@ impl DSPEngine {
     /// Once configured, the DSP side of the kernel will respond to a short list of interrupts:
     /// SIO, for interprocessor messaging;
     /// DMA, for sample processing and output.
-    pub fn run<F: time::Frequency,
+    pub fn run<C: Chip,
+               F: time::Frequency,
                T: time::Ticks>(
         &'static self,
+        chip: &C,
         dma: &'static dyn DMA,
         time: &dyn Time<Frequency = F, Ticks = T>,
         source: dma::SourcePeripheral,
@@ -111,7 +120,6 @@ impl DSPEngine {
             .expect("failed to start ADC sampling DMA");
 
         let mut t_post = 1;
-        let mut playback_started = false;
         // Depending on the length of the signal chain and the processing strategy,
         // the samples go back and forth between buffers as we go through the chain.
         // If there are an even number of processors in the chain,
@@ -121,21 +129,48 @@ impl DSPEngine {
             link_count % 2 == 0
         };
         loop {
-            // Obtain the next unprocessed sequence of audio samples.
-            // Obtain the next free output buffer for processed samples.
+            // Obtain the next container of unprocessed sequence of audio samples.
+            // Obtain the next container of free output buffer for processed samples.
             let input_buffer = process_in_buffer_it.next().unwrap();
             let output_buffer = process_out_buffer_it.next().unwrap();
-            while input_buffer.state() != BufferState::Unprocessed {  }
-            while output_buffer.state() != BufferState::Free {  }
-
-            // Start timing the DSP loop.
-            let loop_start = time.ticks_to_us(time.now());
 
             // Grab the buffers.
-            let (proc_buf_a, proc_buf_b) = (input_buffer.take(BufferState::Processing)
-                                            .expect("buffer for unprocessed input missing"),
-                                            output_buffer.take(BufferState::Processing)
-                                            .expect("buffer for processed output missing"));
+            let (proc_buf_a, proc_buf_b): (&'static mut [usize], _) = {
+                let (mut in_buffer, mut out_buffer) = (None, None);
+
+                while in_buffer.is_none() {
+                    in_buffer = unsafe {
+                        chip.atomic(|| {
+                            if input_buffer.state() == BufferState::Unprocessed {
+                                let buffer = input_buffer.take(BufferState::Processing)
+                                    .expect("buffer unexpectedly missing");
+                                Some(buffer)
+                            } else {
+                                None
+                            }
+                        })
+                    };
+                }
+
+                while out_buffer.is_none() {
+                    out_buffer = unsafe {
+                        chip.atomic(|| {
+                            if output_buffer.state() == BufferState::Free {
+                                let buffer = output_buffer.take(BufferState::Processing)
+                                    .expect("buffer unexpectedly missing");
+                                Some(buffer)
+                            } else {
+                                None
+                            }
+                        })
+                    };
+                }
+
+                (in_buffer.unwrap(), out_buffer.unwrap())
+            };
+
+            // Start timing the DSP loop.
+            let loop_start = time.ticks_to_us(time.now());;
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -157,17 +192,20 @@ impl DSPEngine {
             // Replace the buffers.
             // The output buffer needs to go to BufferState::Ready when we implement playing processed samples.
             let other_buf = if exchange_buffers_after_processing {
-                input_buffer.put(proc_buf_a, BufferState::Free);
-                proc_buf_b
-            } else {
                 input_buffer.put(proc_buf_b, BufferState::Free);
                 proc_buf_a
-            };
-
-            if !playback_started {
-                sink_dma_channel.start(other_buf);
             } else {
-                input_buffer.put(other_buf, BufferState::Ready);
+                input_buffer.put(proc_buf_a, BufferState::Free);
+                proc_buf_b
+            };
+            output_buffer.put(other_buf, BufferState::Ready);
+            // Disable playback and mark buffer as free.
+            // output_buffer.put(other_buf, BufferState::Free);
+
+            if self.playback_stalled.get() {
+                self.playback_stalled.set(false);
+                let other_buf = output_buffer.take(BufferState::Playing).unwrap();
+                sink_dma_channel.start(other_buf);
             }
         }
     }
@@ -182,6 +220,8 @@ impl DSPEngine {
         dma_channel.start(buffer)
     }
 }
+
+static mut start: u32 = 0;
 
 impl dma::DMAClient for DSPEngine {
     /// Restore incoming sample buffer and restart a transfer.
@@ -208,9 +248,14 @@ impl dma::DMAClient for DSPEngine {
                     for buffer in self.in_buffers.iter() {
                         debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
                     }
+                    for buffer in self.out_buffers.iter() {
+                        debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
+                    }
                     panic!("All input buffers exhausted.");
                 } else {
                     let buffer = next_container.take(BufferState::Collecting).unwrap();
+                    // unsafe { debug!("sampling time: {}μs", *(0x40054028 as *const u32) - start) };
+                    // unsafe { start = *(0x40054028 as *const u32) };
                     channel.start(buffer)
                         .expect("could not start DMA from source");
                 }
@@ -228,17 +273,19 @@ impl dma::DMAClient for DSPEngine {
                 let _ = iter.next();
                 let next_container = iter.peek().unwrap();
                 if next_container.state() != BufferState::Ready {
-                    // We panic here for now, but this should change to a debug! call
-                    // as long as this doesn't happen too frequently.
-                    panic!("Playback has emptied all buffers!");
+                    self.playback_stalled.set(true);
                 } else {
                     let buffer = next_container.take(BufferState::Playing).unwrap();
+                    // unsafe { debug!("playback time: {}μs", *(0x40054028 as *const u32) - start) };
+                    // unsafe { start = *(0x40054028 as *const u32) };
                     channel.start(buffer)
                         .expect("could not start DMA to sink");
                 }
             });
         } else {
-            panic!()
+            // We received a callback from a channel we were not expecting.
+            // This was neither the source nor the sink DMA.
+            panic!();
         }
     }
 }

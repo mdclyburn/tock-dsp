@@ -62,4 +62,4 @@ pub(crate) const NO_SAMPLES: usize = SAMPLING_RATE * BUFFER_LEN_MS / 1000;
 /// - collect ADC samples with one buffer
 /// - process collected samples with one buffer
 /// - output processed samples with one buffer.
-pub(crate) const SAMPLE_BUFFERS: usize = 3;
+pub(crate) const SAMPLE_BUFFERS: usize = 5;

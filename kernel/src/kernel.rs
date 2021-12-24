@@ -477,13 +477,15 @@ impl Kernel {
     ) -> ! {
         resources.watchdog().setup();
         loop {
-            self.kernel_loop_operation(resources, chip, ipc, false, capability);
+            self.kernel_loop_operation(resources, chip, ipc, true, capability);
         }
     }
 
-    pub fn dsp_loop<F: hil::time::Frequency,
+    pub fn dsp_loop<C: Chip,
+                    F: hil::time::Frequency,
                     T: hil::time::Ticks>(
         &self,
+        chip: &C,
         dsp: &'static DSPEngine,
         dma: &'static dyn hil::dma::DMA,
         time: &dyn hil::time::Time<Frequency = F, Ticks = T>,
@@ -492,7 +494,7 @@ impl Kernel {
         processing_chain: &dsp::link::Chain,
     ) -> !
     {
-        dsp.run(dma, time, source, sink, processing_chain);
+        dsp.run(chip, dma, time, source, sink, processing_chain);
     }
 
     /// Transfer control from the kernel to a userspace process.
