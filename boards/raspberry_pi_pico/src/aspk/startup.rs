@@ -119,13 +119,6 @@ right_ch_loop:
     .wrap
 ");
 
-    let piop = pio_proc::pio!(32, "
-.wrap_target
-  set pins, 1
-  set pins, 0
-.wrap
-");
-
     let parameters = {
     let default = pio::Parameters::default();
         pio::Parameters {

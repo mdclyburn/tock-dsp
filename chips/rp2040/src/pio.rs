@@ -492,19 +492,35 @@ impl PIOBlock {
                     | SM_PINCTRL::SET_BASE.val(params.set_base_pin as u32).value
                     | SM_PINCTRL::OUT_BASE.val(params.out_base_pin as u32).value;
 
+                // Configure the initial pin direction for side-set pins.
+                // We must do this prior to actually setting the final settings.
+                self.registers.sm_ctrl[sm_no]
+                    .pinctrl
+                    .modify(SM_PINCTRL::SET_BASE.val(params.side_set_base_pin as u32));
+                let side_set_pindirs_instr = {
+                    let mut pin_mask = 0;
+                    for i in 0..params.side_set_count { pin_mask |= 1 << i }
+                    ENC_INSTR_SET
+                        | 0b000_00000_100_00000 // Set PINDIRS.
+                        | pin_mask
+                };
+                self.registers.sm_ctrl[sm_no].instr.set(side_set_pindirs_instr as u32);
+
                 // Apply settings to registers.
                 self.registers.sm_ctrl[sm_no].clkdiv.set(clkdiv);
                 self.registers.sm_ctrl[sm_no].execctrl.set(execctrl);
                 self.registers.sm_ctrl[sm_no].shiftctrl.set(shiftctrl);
                 self.registers.sm_ctrl[sm_no].pinctrl.set(pinctrl);
 
-                // Configure the initial pin directions.
-                let initial_pindirs_instr =
+                // Configure the initial pin direction for set pins.
+                // This allows the PIOASM to shrink by not forcing the program to set this state.
+                let set_pindirs_instr =
                     ENC_INSTR_SET
                     | 0b000_00000_100_00000 // Set PINDIRS.
                     | params.initial_pindir as u16;
-                self.registers.sm_ctrl[sm_no].instr.set(initial_pindirs_instr as u32);
+                self.registers.sm_ctrl[sm_no].instr.set(set_pindirs_instr as u32);
 
+                // Start the state machine.
                 enabled_machines |= (1 << 3);
             }
         }
