@@ -420,9 +420,10 @@ pub unsafe fn main() {
     // Configure I/O for DSP.
     {
         use kernel::hil::gpio::Configure;
-        let pin = peripherals.pins.get_pin(RPGpio::GPIO16);
-        pin.make_output();
-        pin.set_function(GpioFunction::PIO0);
+        for pin_id in [RPGpio::GPIO16, RPGpio::GPIO17, RPGpio::GPIO18] {
+            let pin = peripherals.pins.get_pin(pin_id);
+            pin.set_function(GpioFunction::PIO0);
+        }
     }
 
     let gpio = GpioComponent::new(

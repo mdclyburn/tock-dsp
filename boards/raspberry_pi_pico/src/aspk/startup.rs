@@ -2,6 +2,7 @@ use kernel::static_init;
 use kernel::Kernel;
 use kernel::dsp::engine::DSPEngine;
 use kernel::dsp::link::{Chain, Link};
+use kernel::hil::dma::{SourcePeripheral, TargetPeripheral};
 
 use dsp::effects;
 use rp2040;
@@ -68,11 +69,12 @@ pub unsafe fn launch() -> ! {
         rp2040::adc::Channel::Channel0,
         DSPEngine::sampling_rate() as u32);
 
-    kernel.dsp_loop(board_resources,
-                    chip_resources,
+    kernel.dsp_loop(chip_resources,
                     aspk.engine,
                     board_resources.dma,
                     board_resources.timer,
+                    SourcePeripheral::ADC,
+                    TargetPeripheral::Custom(0),
                     &aspk.signal_chain);
 }
 
@@ -96,19 +98,53 @@ fn receive_resources(sio: &SIO) -> (&'static Kernel,
 
 #[inline(never)]
 fn configure_pio(pio: &'static PIO) -> &'static PIOBlock {
-    let i2s_pio = pio_proc::pio!(
-        32,
-        "
-set pindirs, 1
+    let i2s_pio = pio_proc::pio!(32, "
+    ;; bit 0 = BCLK, bit 1 = LRCLK
+    .side_set 2
+
+    .wrap_target
+left_ch:
+    set x, 15 side 0b01                           ; Set up counter. Cue on BCLK (LSB of right channel).
+left_ch_loop:
+    out pins, 1 side 0b00                         ; Write left channel bit.
+    jmp x-- left_ch_loop side 0b01                ; Repeat for the first 15 bits. Cue on BCLK.
+    out pins, 1 side 0b10                         ; Write last bit. Goes with the right channel's LRCLK.
+
+right_ch:
+    set x, 15 side 0b11                           ; Set up counter. Cue on BCLK (LSB of left channel).
+right_ch_loop:
+    set pins, 0 side 0b10                         ; Write empty right channel.
+    jmp x--, right_ch_loop side 0b11              ; Repeat for the first 15 bits. Cue on BCLK.
+    set pins, 0 side 0b00                         ; Write last bit. Goes with the left channel's LRCLK.
+    .wrap
+");
+
+    let piop = pio_proc::pio!(32, "
 .wrap_target
-set pins, 0 [1]
-set pins, 1 [1]
+  set pins, 1
+  set pins, 0
 .wrap
 ");
+
     let parameters = {
     let default = pio::Parameters::default();
         pio::Parameters {
-            clock_divider: (3000, 0),
+            // Desired frequency: 88.2kHz = 88,200Hz
+            //
+            // Calculating clock divider as follows...
+            // 32 bits to output a sample (16-bit samples)
+            //   * 2 cycles per sample (see the PIOASM)
+            //   * 88,200 samples to output per second
+            //   = 5,644,800Hz clock rate
+            //
+            // 125,000,000 system clock ticks (125MHz system clock)
+            //   / 5,644,800 PIO cycles necessary for operation
+            //   = 22.144274376 system clock ticks per PIO cycle
+            //
+            // Integer divider = 22
+            // Fractional divider (8-bit) = .144274376 * 256
+            //   = 36.934240256 ≅ 37
+            clock_divider: (22, 37),
             osr_direction: pio::ShiftDirection::Left,
             set_count: 1,
             out_count: 1,
@@ -116,7 +152,11 @@ set pins, 1 [1]
             wrap_top: i2s_pio.program.wrap.source,
             wrap_bottom: i2s_pio.program.wrap.target,
             autopull: pio::Autoshift::On(16),
+            out_base_pin: 16,
             set_base_pin: 16,
+            side_set_base_pin: 17,
+            side_set_count: 2,
+            initial_pindir: 0b00001,
             ..default
         }
     };

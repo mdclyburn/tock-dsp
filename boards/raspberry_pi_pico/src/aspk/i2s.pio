@@ -2,8 +2,8 @@
 ;;;
 ;;; Single-channel I²S
 ;;;
-;;; PIO configuration:
-;;; TODO
+;;; Drive a mono audio signal through the I²S left channel.
+;;;
 
     .program i2s
 
@@ -11,17 +11,17 @@
     .side_set 2
 
     .wrap_target
-    set x, 15 side 0b00
-
 left_ch:
-    out PINS, 1 side 0b00                         ; Write left channel bit.
-    jmp x-- left_ch side 0b01                     ; Repeat for the first 15 bits. Cue on BCLK.
-    out PINS, 1 side 0b10                         ; Write last bit. Goes with the right channel's LRCLK.
-    set x, 15 side 0b11                           ; Set up counter for right channel. Cue on BCLK.
+    set x, 15 side 0b01                           ; Set up counter. Cue on BCLK (LSB of right channel).
+left_ch_loop:
+    out pins, 1 side 0b00                         ; Write left channel bit.
+    jmp x-- left_ch_loop side 0b01                ; Repeat for the first 15 bits. Cue on BCLK.
+    out pins, 1 side 0b10                         ; Write last bit. Goes with the right channel's LRCLK.
 
 right_ch:
-    set PINS, 0 side 0b10                         ; Write empty right channel.
-    jmp x--, right_ch side 0b11                   ; Repeat for the first 15 bits. Cue on BCLK.
-    set PINS, 0 side 0b00                         ; Write last bit. Goes with the left channel's LRCLK.
-    set x, 15 side 0b01                           ; Set up counter for left channel. Cue on BCLK.
+    set x, 15 side 0b11                           ; Set up counter. Cue on BCLK (LSB of left channel).
+right_ch_loop:
+    set pins, 0 side 0b10                         ; Write empty right channel.
+    jmp x--, right_ch_loop side 0b11              ; Repeat for the first 15 bits. Cue on BCLK.
+    set pins, 0 side 0b00                         ; Write last bit. Goes with the left channel's LRCLK.
     .wrap
