@@ -494,7 +494,6 @@ impl PIOBlock {
                 enabled_machines |= (1 << 3);
             }
         }
-        kernel::debug!("enabled machines: {:#010X}", enabled_machines);
 
         // Write instructions to instruction memory.
         for (idx, instr) in (0..32).zip(instructions) {
