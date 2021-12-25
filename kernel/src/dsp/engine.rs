@@ -13,15 +13,21 @@ use crate::hil::dma::{self, DMA, DMAChannel};
 use crate::hil::time::{self, Time, ConvertTicks};
 use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
+use crate::sync::{Lockable, Mutex};
 use crate::utilities::cells::MapCell;
 
 type CyclicContainerIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
+
+/// Returns the sampling rate of the engine.
+pub fn sampling_rate() -> usize { config::SAMPLING_RATE }
 
 /// Orchestrator of the digital signal processing cycle.
 ///
 /// This is the heart of the DSP.
 /// Start signal processing with [`DSPEngine::run()`].
-pub struct DSPEngine {
+pub struct DSPEngine<L: Lockable> {
+    /// Runtime statistics.
+    stats: Mutex<L, Statistics>,
     /// Buffers for incoming audio samples.
     in_containers: [SampleContainer; config::SAMPLE_BUFFERS],
     /// Buffers for outgoing audio samples.
@@ -38,10 +44,11 @@ pub struct DSPEngine {
     playback_stalled: Cell<bool>,
 }
 
-impl DSPEngine {
+impl<L: Lockable> DSPEngine<L> {
     /// Create a new `DSPEngine` instance.
-    pub unsafe fn new() -> DSPEngine {
+    pub unsafe fn new(stats: Mutex<L, Statistics>) -> DSPEngine<L> {
         DSPEngine {
+            stats,
             in_containers: [SampleContainer::new(),
                          SampleContainer::new(),
                          SampleContainer::new(),
@@ -59,9 +66,6 @@ impl DSPEngine {
             playback_stalled: Cell::new(true),
         }
     }
-
-    /// Returns the sampling rate of the engine.
-    pub fn sampling_rate() -> usize { config::SAMPLING_RATE }
 
     /// Run the digital signal processing loop.
     ///
@@ -228,7 +232,7 @@ impl DSPEngine {
 
 static mut start: u32 = 0;
 
-impl dma::DMAClient for DSPEngine {
+impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
     /// Restore incoming sample buffer and restart a transfer.
     ///
     /// The DSP engine receives this callback for completed transfers from the sample source and sink.
@@ -293,4 +297,9 @@ impl dma::DMAClient for DSPEngine {
             panic!();
         }
     }
+}
+
+#[derive(Default)]
+pub struct Statistics {
+    processing_loop_us: usize,
 }

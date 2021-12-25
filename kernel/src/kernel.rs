@@ -28,6 +28,7 @@ use crate::platform::watchdog::WatchDog;
 use crate::process::ProcessId;
 use crate::process::{self, Task};
 use crate::scheduler::{Scheduler, SchedulingDecision};
+use crate::sync::Lockable;
 use crate::syscall::{ContextSwitchReason, SyscallReturn};
 use crate::syscall::{Syscall, YieldCall};
 use crate::syscall_driver::CommandReturn;
@@ -482,11 +483,12 @@ impl Kernel {
     }
 
     pub fn dsp_loop<C: Chip,
+                    L: Lockable,
                     F: hil::time::Frequency,
                     T: hil::time::Ticks>(
         &self,
         chip: &C,
-        dsp: &'static DSPEngine,
+        dsp: &'static DSPEngine<L>,
         dma: &'static dyn hil::dma::DMA,
         time: &dyn hil::time::Time<Frequency = F, Ticks = T>,
         source: hil::dma::SourcePeripheral,

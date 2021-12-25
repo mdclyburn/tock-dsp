@@ -1,8 +1,10 @@
 use kernel::static_init;
 use kernel::Kernel;
-use kernel::dsp::engine::DSPEngine;
+use kernel::dsp::engine::{self, DSPEngine};
 use kernel::dsp::link::{Chain, Link};
 use kernel::hil::dma::{SourcePeripheral, TargetPeripheral};
+use kernel::platform::sync::UnmanagedSpinlock;
+use kernel::sync::{Lockable, Mutex};
 
 use dsp::effects;
 use rp2040;
@@ -12,8 +14,8 @@ use rp2040::pio::{self, PIO, PIOBlock};
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::interrupt;
 
-struct ASPKResources {
-    engine: &'static DSPEngine,
+struct ASPKResources<L: 'static + Lockable> {
+    engine: &'static DSPEngine<L>,
     signal_chain: Chain,
 }
 
@@ -24,12 +26,27 @@ macro_rules! create_link {
     }}
 }
 
-unsafe fn allocate_aspk_resources() -> ASPKResources {
+unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKResources<UnmanagedSpinlock> {
+    // Create statistics container.
+    let mtx_stats = {
+        use kernel::platform::KernelResources;
+        use kernel::platform::sync::HardwareSyncAccess;
+
+        let spinlock: UnmanagedSpinlock = board_resources.hardware_sync()
+            .expect("no hardware sync configured")
+            .access(true, |hs| hs.get_spinlock().expect("no free spinlocks left"))
+            .expect("cannot access hardware sync")
+            .into();
+
+        let stats = static_init!(engine::Statistics, engine::Statistics::default());
+
+        Mutex::new(spinlock, stats)
+    };
+
     ASPKResources {
-        engine: static_init!(DSPEngine, DSPEngine::new()),
+        engine: static_init!(DSPEngine<UnmanagedSpinlock>, DSPEngine::new(mtx_stats)),
         signal_chain: Chain::new(&[
             create_link!(effects::NoOp, effects::NoOp::new()),
-            // create_link!(effects::Scale, effects::Scale::new(1, 4)),
         ]),
     }
 }
@@ -61,13 +78,13 @@ pub unsafe fn launch() -> ! {
     // Complete interrupt configuration.
     interrupt::configure(board_resources);
 
-    let aspk = allocate_aspk_resources();
+    let aspk = allocate_aspk_resources(&board_resources);
 
-    let i2s = configure_pio(board_resources.pio);
+    let _i2s = configure_pio(board_resources.pio);
 
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,
-        DSPEngine::sampling_rate() as u32);
+        engine::sampling_rate() as u32);
 
     kernel.dsp_loop(chip_resources,
                     aspk.engine,
