@@ -17,6 +17,10 @@ use crate::utilities::cells::MapCell;
 
 type CyclicBufferIter = Peekable<Cycle<SliceIter<'static, AudioBuffer>>>;
 
+/// Orchestrator of the digital signal processing cycle.
+///
+/// This is the heart of the DSP.
+/// Start signal processing with [`DSPEngine::run()`].
 pub struct DSPEngine {
     /// Buffers for incoming audio samples.
     in_buffers: [AudioBuffer; config::SAMPLE_BUFFERS],
@@ -210,6 +214,7 @@ impl DSPEngine {
         }
     }
 
+    /// Start pulling samples from the signal source.
     fn initiate_sampling(&'static self, dma_channel: &dyn DMAChannel) -> Result<(), ErrorCode> {
         let buffer_iter = self.in_buffers.iter().cycle().peekable();
         self.in_buffer_iter.put(buffer_iter);
@@ -226,8 +231,8 @@ static mut start: u32 = 0;
 impl dma::DMAClient for DSPEngine {
     /// Restore incoming sample buffer and restart a transfer.
     ///
-    /// The DSP engine receives this callback for completed transfers from the ADC and to the I2S-PIO.
-    /// In both cases, we replace the buffer to its `AudioBuffer` container and initiate another transfer.
+    /// The DSP engine receives this callback for completed transfers from the sample source and sink.
+    /// This callback replaces the buffer to its `AudioBuffer` container and initiate another transfer.
     fn transfer_done(&self, channel: &dyn DMAChannel, buffer: &'static mut [usize]) {
         let channel_no = channel.channel_no() as u8;
         if channel_no == self.source_dma_channel_no.get() {
