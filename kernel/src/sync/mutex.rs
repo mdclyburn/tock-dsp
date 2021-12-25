@@ -1,6 +1,6 @@
 //! Mutex synchronization primitive.
 
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 
 use crate::errorcode::ErrorCode;
 
@@ -23,9 +23,26 @@ impl<'a, T> MutexGuard<'a, T> {
             resource_access,
         }
     }
+
+    pub fn map<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut T) -> R,
+    {
+        // Mutex only accepts a static, mutable reference to T.
+        // However, we cannot copy or clone &'static T (for good reason),
+        // but we still want callers that properly lock this state to have
+        // the ability to mutate it.
+        // And thus...
+        let r = unsafe {
+            ((self.resource_access as *const T) as *mut T)
+                .as_mut()
+                .unwrap()
+        };
+        f(r)
+    }
 }
 
-impl <'a, T> Deref for MutexGuard<'a, T> {
+impl<'a, T> Deref for MutexGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -48,7 +65,7 @@ pub struct Mutex<L: Lockable, T: 'static> {
 
 impl<L: Lockable, T> Mutex<L, T> {
     /// Create a new Mutex.
-    pub fn new(lock: L, resource: &'static T) -> Mutex<L, T> {
+    pub fn new(lock: L, resource: &'static mut T) -> Mutex<L, T> {
         Mutex {
             lock,
             resource,
