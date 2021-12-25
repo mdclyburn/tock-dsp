@@ -15,7 +15,7 @@ use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
 use crate::utilities::cells::MapCell;
 
-type CyclicBufferIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
+type CyclicContainerIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
 
 /// Orchestrator of the digital signal processing cycle.
 ///
@@ -23,17 +23,17 @@ type CyclicBufferIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
 /// Start signal processing with [`DSPEngine::run()`].
 pub struct DSPEngine {
     /// Buffers for incoming audio samples.
-    in_buffers: [SampleContainer; config::SAMPLE_BUFFERS],
+    in_containers: [SampleContainer; config::SAMPLE_BUFFERS],
     /// Buffers for outgoing audio samples.
-    out_buffers: [SampleContainer; config::SAMPLE_BUFFERS],
+    out_containers: [SampleContainer; config::SAMPLE_BUFFERS],
     /// Source DMA channel number.
     source_dma_channel_no: Cell<u8>,
     /// Sink DMA channel number.
     sink_dma_channel_no: Cell<u8>,
     /// Cyclical input buffer iterator.
-    in_buffer_iter: MapCell<CyclicBufferIter>,
+    in_container_iter: MapCell<CyclicContainerIter>,
     /// Cyclical output buffer iterator.
-    out_buffer_iter: MapCell<CyclicBufferIter>,
+    out_container_iter: MapCell<CyclicContainerIter>,
     /// Whether playback DMA is suspended due to ready buffers being unavailable.
     playback_stalled: Cell<bool>,
 }
@@ -42,20 +42,20 @@ impl DSPEngine {
     /// Create a new `DSPEngine` instance.
     pub unsafe fn new() -> DSPEngine {
         DSPEngine {
-            in_buffers: [SampleContainer::new(),
+            in_containers: [SampleContainer::new(),
                          SampleContainer::new(),
                          SampleContainer::new(),
                          SampleContainer::new(),
                          SampleContainer::new()],
-            out_buffers: [SampleContainer::new(),
+            out_containers: [SampleContainer::new(),
                           SampleContainer::new(),
                           SampleContainer::new(),
                           SampleContainer::new(),
                           SampleContainer::new()],
             source_dma_channel_no: Cell::new(99),
             sink_dma_channel_no: Cell::new(99),
-            in_buffer_iter: MapCell::empty(),
-            out_buffer_iter: MapCell::empty(),
+            in_container_iter: MapCell::empty(),
+            out_container_iter: MapCell::empty(),
             playback_stalled: Cell::new(true),
         }
     }
@@ -113,11 +113,11 @@ impl DSPEngine {
         self.sink_dma_channel_no.set(sink_dma_channel.channel_no() as u8);
 
         // Create cyclic iterators over the audio buffers.
-        let mut process_in_buffer_it = self.in_buffers.iter().cycle();
-        let mut process_out_buffer_it = self.out_buffers.iter().cycle();
+        let mut process_in_buffer_it = self.in_containers.iter().cycle();
+        let mut process_out_buffer_it = self.out_containers.iter().cycle();
 
-        let out_buffer_it = self.out_buffers.iter().cycle().peekable();
-        self.out_buffer_iter.put(out_buffer_it);
+        let out_buffer_it = self.out_containers.iter().cycle().peekable();
+        self.out_container_iter.put(out_buffer_it);
 
         // Start sample collection.
         self.initiate_sampling(source_dma_channel)
@@ -174,7 +174,7 @@ impl DSPEngine {
             };
 
             // Start timing the DSP loop.
-            let loop_start = time.ticks_to_us(time.now());;
+            let loop_start = time.ticks_to_us(time.now());
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -216,9 +216,9 @@ impl DSPEngine {
 
     /// Start pulling samples from the signal source.
     fn initiate_sampling(&'static self, dma_channel: &dyn DMAChannel) -> Result<(), ErrorCode> {
-        let buffer_iter = self.in_buffers.iter().cycle().peekable();
-        self.in_buffer_iter.put(buffer_iter);
-        let buffer = self.in_buffer_iter
+        let buffer_iter = self.in_containers.iter().cycle().peekable();
+        self.in_container_iter.put(buffer_iter);
+        let buffer = self.in_container_iter
             .map(|iter| iter.peek().unwrap().take(BufferState::Collecting).unwrap())
             .unwrap();
 
@@ -237,7 +237,7 @@ impl dma::DMAClient for DSPEngine {
         let channel_no = channel.channel_no() as u8;
         if channel_no == self.source_dma_channel_no.get() {
             // The transfer that completed is for the ADC samples.
-            self.in_buffer_iter.map(move |iter| {
+            self.in_container_iter.map(move |iter| {
                 // Replace the buffer as an unprocessed buffer.
                 let vacant_container = iter.peek().unwrap();
                 vacant_container.put(buffer, BufferState::Unprocessed);
@@ -250,10 +250,10 @@ impl dma::DMAClient for DSPEngine {
                 let next_container = iter.peek().unwrap();
                 if next_container.state() != BufferState::Free {
                     debug!("Sampling has filled all buffers!");
-                    for buffer in self.in_buffers.iter() {
+                    for buffer in self.in_containers.iter() {
                         debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
                     }
-                    for buffer in self.out_buffers.iter() {
+                    for buffer in self.out_containers.iter() {
                         debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
                     }
                     panic!("All input buffers exhausted.");
@@ -267,7 +267,7 @@ impl dma::DMAClient for DSPEngine {
             });
         } else if channel_no == self.sink_dma_channel_no.get() {
             // The transfer that completed is for the sink.
-            self.out_buffer_iter.map(move |iter| {
+            self.out_container_iter.map(move |iter| {
                 // Replace the buffer as a free buffer.
                 let vacant_container = iter.peek().unwrap();
                 vacant_container.put(buffer, BufferState::Free);
