@@ -127,7 +127,8 @@ impl<L: Lockable> DSPEngine<L> {
         self.initiate_sampling(source_dma_channel)
             .expect("failed to start ADC sampling DMA");
 
-        let mut t_post = 1;
+        // Point in time last timing happened.
+        let mut t_last_timing = 0;
         // Depending on the length of the signal chain and the processing strategy,
         // the samples go back and forth between buffers as we go through the chain.
         // If there are an even number of processors in the chain,
@@ -178,7 +179,7 @@ impl<L: Lockable> DSPEngine<L> {
             };
 
             // Start timing the DSP loop.
-            let loop_start = time.ticks_to_us(time.now());
+            let loop_start = time.now();
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -188,13 +189,6 @@ impl<L: Lockable> DSPEngine<L> {
                 } else {
                     link.processor().process(&*proc_buf_b, proc_buf_a);
                 }
-            }
-
-            // Stop timing the DSP loop.
-            let loop_end = time.ticks_to_us(time.now());
-            if t_post * 500_000 < loop_end {
-                t_post += 1;
-                debug!("DSP loop latency: {}μs", loop_end - loop_start);
             }
 
             // Replace the buffers.
@@ -214,6 +208,13 @@ impl<L: Lockable> DSPEngine<L> {
                 self.playback_stalled.set(false);
                 let other_buf = output_buffer.take(BufferState::Playing).unwrap();
                 sink_dma_channel.start(other_buf);
+            }
+
+            // End timing for the loop.
+            // TODO: make this a periodic interrupt without messing up Tock.
+            let loop_latency = time.ticks_to_us(time.now()) - time.ticks_to_us(loop_start);
+            if let Ok(stats_guard) = self.stats.try_lock() {
+                stats_guard.map(|stats| stats.processing_loop_us = loop_latency as usize);
             }
         }
     }
