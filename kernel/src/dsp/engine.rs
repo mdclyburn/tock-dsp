@@ -6,7 +6,7 @@ use core::slice::Iter as SliceIter;
 
 use crate::config;
 use crate::debug;
-use crate::dsp::buffer::{AudioBuffer, BufferState};
+use crate::dsp::buffer::{SampleContainer, BufferState};
 use crate::dsp::link::Chain;
 use crate::errorcode::ErrorCode;
 use crate::hil::dma::{self, DMA, DMAChannel};
@@ -15,7 +15,7 @@ use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
 use crate::utilities::cells::MapCell;
 
-type CyclicBufferIter = Peekable<Cycle<SliceIter<'static, AudioBuffer>>>;
+type CyclicBufferIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
 
 /// Orchestrator of the digital signal processing cycle.
 ///
@@ -23,9 +23,9 @@ type CyclicBufferIter = Peekable<Cycle<SliceIter<'static, AudioBuffer>>>;
 /// Start signal processing with [`DSPEngine::run()`].
 pub struct DSPEngine {
     /// Buffers for incoming audio samples.
-    in_buffers: [AudioBuffer; config::SAMPLE_BUFFERS],
+    in_buffers: [SampleContainer; config::SAMPLE_BUFFERS],
     /// Buffers for outgoing audio samples.
-    out_buffers: [AudioBuffer; config::SAMPLE_BUFFERS],
+    out_buffers: [SampleContainer; config::SAMPLE_BUFFERS],
     /// Source DMA channel number.
     source_dma_channel_no: Cell<u8>,
     /// Sink DMA channel number.
@@ -42,16 +42,16 @@ impl DSPEngine {
     /// Create a new `DSPEngine` instance.
     pub unsafe fn new() -> DSPEngine {
         DSPEngine {
-            in_buffers: [AudioBuffer::new(),
-                         AudioBuffer::new(),
-                         AudioBuffer::new(),
-                         AudioBuffer::new(),
-                         AudioBuffer::new()],
-            out_buffers: [AudioBuffer::new(),
-                          AudioBuffer::new(),
-                          AudioBuffer::new(),
-                          AudioBuffer::new(),
-                          AudioBuffer::new()],
+            in_buffers: [SampleContainer::new(),
+                         SampleContainer::new(),
+                         SampleContainer::new(),
+                         SampleContainer::new(),
+                         SampleContainer::new()],
+            out_buffers: [SampleContainer::new(),
+                          SampleContainer::new(),
+                          SampleContainer::new(),
+                          SampleContainer::new(),
+                          SampleContainer::new()],
             source_dma_channel_no: Cell::new(99),
             sink_dma_channel_no: Cell::new(99),
             in_buffer_iter: MapCell::empty(),
@@ -127,7 +127,7 @@ impl DSPEngine {
         // Depending on the length of the signal chain and the processing strategy,
         // the samples go back and forth between buffers as we go through the chain.
         // If there are an even number of processors in the chain,
-        // then we must bounce buffer ownership between the AudioBuffers to avoid copying samples.
+        // then we must bounce buffer ownership between the SampleContainers to avoid copying samples.
         let exchange_buffers_after_processing = {
             let link_count = chain.into_iter().count();
             link_count % 2 == 0
@@ -232,7 +232,7 @@ impl dma::DMAClient for DSPEngine {
     /// Restore incoming sample buffer and restart a transfer.
     ///
     /// The DSP engine receives this callback for completed transfers from the sample source and sink.
-    /// This callback replaces the buffer to its `AudioBuffer` container and initiate another transfer.
+    /// This callback replaces the buffer to its `SampleContainer` container and initiate another transfer.
     fn transfer_done(&self, channel: &dyn DMAChannel, buffer: &'static mut [usize]) {
         let channel_no = channel.channel_no() as u8;
         if channel_no == self.source_dma_channel_no.get() {
