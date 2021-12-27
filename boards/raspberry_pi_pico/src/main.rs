@@ -70,7 +70,7 @@ pub struct RaspberryPiPico {
     console: &'static capsules::console::Console<'static>,
     alarm: &'static capsules::alarm::AlarmDriver<
         'static,
-        VirtualMuxAlarm<'static, rp2040::timer::RPTimer<'static>>,
+        VirtualMuxAlarm<'static, rp2040::timer::Alarm<'static>>,
         >,
     dma: &'static rp2040::dma::DMA,
     gpio: &'static capsules::gpio::GPIO<'static, RPGpioPin<'static>>,
@@ -377,15 +377,16 @@ pub unsafe fn main() {
     );
     DynamicDeferredCall::set_global_instance(dynamic_deferred_caller);
 
-    let mux_alarm = components::alarm::AlarmMuxComponent::new(&peripherals.timer)
-        .finalize(components::alarm_mux_component_helper!(RPTimer));
+    let rp2040_alarm = peripherals.timer.allocate_alarm().unwrap();
+    let mux_alarm = components::alarm::AlarmMuxComponent::new(rp2040_alarm)
+        .finalize(components::alarm_mux_component_helper!(rp2040::timer::Alarm));
 
     let alarm = components::alarm::AlarmDriverComponent::new(
         board_kernel,
         capsules::alarm::DRIVER_NUM,
         mux_alarm,
     )
-        .finalize(components::alarm_component_helper!(RPTimer));
+        .finalize(components::alarm_component_helper!(rp2040::timer::Alarm));
 
     // DMA
     let dma = static_init!(rp2040::dma::DMA, rp2040::dma::DMA::new());
