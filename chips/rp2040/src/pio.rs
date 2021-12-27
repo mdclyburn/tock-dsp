@@ -576,7 +576,7 @@ impl PIO {
                     client: OptionalCell::empty(),
                 },
                 PIOBlock {
-                    registers: PIO0,
+                    registers: PIO1,
                     client: OptionalCell::empty(),
                 }
             ],
