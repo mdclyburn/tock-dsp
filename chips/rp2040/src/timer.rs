@@ -169,6 +169,16 @@ impl<'a> Alarm<'a> {
         }
     }
 
+    pub fn interrupt_no(&self) -> u32 {
+        IRQ_NOS[self.no as usize]
+    }
+
+    pub fn handle_interrupt(&self) {
+        self.client.map(|c| c.alarm());
+        let r = REGISTERS.intr.get();
+        REGISTERS.intr.set(r ^ (1 << self.no));
+    }
+
     fn enable_interrupt(&self) {
         let r = REGISTERS.inte.get();
         REGISTERS.inte.set(r | (1 << self.no));
@@ -179,12 +189,6 @@ impl<'a> Alarm<'a> {
         let r = REGISTERS.inte.get();
         REGISTERS.inte.set(r ^ (1 << self.no));
         unsafe { cortexm0p::nvic::Nvic::new(IRQ_NOS[self.no as usize]) }.disable();
-    }
-
-    fn handle_interrupt(&self) {
-        self.client.map(|c| c.alarm());
-        let r = REGISTERS.intr.get();
-        REGISTERS.intr.set(r ^ (1 << self.no));
     }
 }
 

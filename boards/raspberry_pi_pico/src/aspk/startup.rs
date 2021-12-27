@@ -75,8 +75,10 @@ pub unsafe fn launch() -> ! {
     let sio = SIO::new();
     let (kernel, board_resources, chip_resources) = receive_resources(&sio);
 
+    let alarm = board_resources.timer.allocate_alarm().unwrap();
+
     // Complete interrupt configuration.
-    interrupt::configure(board_resources);
+    interrupt::configure(board_resources, alarm);
 
     let aspk = allocate_aspk_resources(&board_resources);
 

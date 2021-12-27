@@ -5,6 +5,7 @@ use core::mem::MaybeUninit;
 use cortexm0p;
 use rp2040::dma::{self, DMA};
 use rp2040::sio::FIFO;
+use rp2040::timer::Alarm;
 
 use crate::RaspberryPiPico;
 
@@ -20,9 +21,12 @@ pub static mut IRQS: [usize; 32] = [0x0000_0000; 32];
 
 static mut DMA: MaybeUninit<&'static DMA> = MaybeUninit::uninit();
 static mut FIFO: MaybeUninit<&'static FIFO> = MaybeUninit::uninit();
+static mut ALARM: MaybeUninit<&'static Alarm> = MaybeUninit::uninit();
 
 /// Provide an initial configuration for all interrupts and exceptions.
-pub unsafe fn configure(board_resources: &'static RaspberryPiPico) {
+pub unsafe fn configure(board_resources: &'static RaspberryPiPico,
+                        alarm: &'static Alarm)
+{
     // Initialize all vectors and IRQ handlers to something.
     // Skip the first two since that is the initial stack
     // pointer value and the reset vector.
@@ -36,6 +40,7 @@ pub unsafe fn configure(board_resources: &'static RaspberryPiPico) {
     // Set up the specially-handled interrupts.
     DMA.write(board_resources.dma);
     FIFO.write(board_resources.fifo);
+    ALARM.write(alarm);
 
     for (no, handler) in (0..).zip(&mut IRQS) {
         *handler = match no {
@@ -53,6 +58,7 @@ pub unsafe fn configure(board_resources: &'static RaspberryPiPico) {
             _ => fail_interrupt as usize,
         }
     }
+    IRQS[alarm.interrupt_no() as usize] = alarm_interrupt_handler as usize;
 }
 
 /// "Handler" for interrupts that are not being explicitly handled by ASPK.
@@ -107,12 +113,21 @@ unsafe extern "C" fn dma_interrupt_handler() {
 
 #[no_mangle]
 unsafe extern "C" fn sio_interrupt_handler() {
-    // There is not need to explicitly disable this interrupt.
+    // There is no need to explicitly disable this interrupt.
     // The interrupt is actually a logical OR of the ROE, WOF, VLD FIFO status bits.
 
     asm!("cpsid i");
 
     FIFO.assume_init().handle_interrupt();
+
+    asm!("cpsie i");
+}
+
+#[no_mangle]
+unsafe extern "C" fn alarm_interrupt_handler() {
+    asm!("cpsid i");
+
+    ALARM.assume_init().handle_interrupt();
 
     asm!("cpsie i");
 }
