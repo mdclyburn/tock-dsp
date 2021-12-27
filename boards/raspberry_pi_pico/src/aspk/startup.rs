@@ -171,6 +171,7 @@ right_ch_loop:
             side_set_base_pin: 17,
             side_set_count: 2,
             initial_pindir: 0b00001,
+            fifo_allocation: pio::FIFOAllocation::Transmit,
             ..default
         }
     };
