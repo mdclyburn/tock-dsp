@@ -466,13 +466,23 @@ impl DMA {
                     }
                 };
 
+                let transfer_size: u8 = {
+                    use hil::dma::TransferSize::*;
+
+                    match options.transfer_size {
+                        Byte => 0,
+                        HalfWord => 1,
+                        Word => 2,
+                    }
+                };
+
                 let ctrl =
                     CTRL::TREQ_SEL.val(treq_signal as u32).value
                     | CTRL::RING_SEL.val(ring_sel).value
                     | CTRL::RING_SIZE.val(ring_size as u32).value
                     | CTRL::INCR_WRITE.val(if options.increment_on_write { 1 } else { 0 }).value
                     | CTRL::INCR_READ.val(if options.increment_on_read { 1 } else { 0 }).value
-                    | CTRL::DATA_SIZE.val(options.transfer_size as u32).value
+                    | CTRL::DATA_SIZE.val(transfer_size as u32).value
                     | CTRL::HIGH_PRIORITY.val(if options.high_priority { 1 } else { 0 }).value;
 
                 // Hard-code to use DMA_IRQ0 since HIL does not have an equivalent distinction.

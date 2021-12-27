@@ -55,6 +55,10 @@ pub(crate) const SAMPLING_RATE: usize = 44_100 * 2;
 pub(crate) const BUFFER_LEN_MS: usize = 20;
 /// Number of samples ASPK will collect to fulfill both `SAMPLING_RATE` and `BUFFER_LEN_MS`.
 pub(crate) const NO_SAMPLES: usize = SAMPLING_RATE * BUFFER_LEN_MS / 1000;
+/// Sample size (bits).
+pub(crate) const SAMPLE_SIZE: usize = 16;
+/// Number of entries in each sample buffer.
+pub(crate) const NO_BUFFER_ENTRIES: usize = NO_SAMPLES * SAMPLE_SIZE / 32;
 
 /// Number of buffers ASPK will collect samples in.
 ///

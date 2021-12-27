@@ -16,7 +16,7 @@ impl NoOp {
 }
 
 impl SignalProcessor for NoOp {
-    fn process(&self, in_samples: &[usize], out_samples: &mut [usize]) {
+    fn process(&self, in_samples: &[u16], out_samples: &mut [u16]) {
         for (i, o) in in_samples.iter().zip(out_samples) {
             *o = *i;
         }
@@ -31,7 +31,7 @@ impl SignalProcessor for NoOp {
 /// For example, to create a filter to scale the input samples by 140%, use
 /// `Scale::new(14, 10)` or `Scale::new(7, 5)`.
 pub struct Scale {
-    baseline: usize,
+    baseline: u16,
     nominator: u8,
     denominator: u8,
 }
@@ -48,15 +48,15 @@ impl Scale {
 }
 
 impl SignalProcessor for Scale {
-    fn process(&self, in_samples: &[usize], out_samples: &mut [usize]) {
+    fn process(&self, in_samples: &[u16], out_samples: &mut [u16]) {
         let samples_it = in_samples.iter().zip(out_samples);
         for (in_sample, out_sample) in samples_it {
             *out_sample = if *in_sample < self.baseline {
                 self.baseline - ((self.baseline - *in_sample)
-                            * self.nominator as usize / self.denominator as usize)
+                            * self.nominator as u16 / self.denominator as u16)
             } else {
                 self.baseline + ((*in_sample - self.baseline)
-                            * self.nominator as usize / self.denominator as usize)
+                            * self.nominator as u16 / self.denominator as u16)
             };
         }
     }

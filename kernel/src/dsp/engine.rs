@@ -2,7 +2,8 @@
 
 use core::cell::Cell;
 use core::iter::{Cycle, Iterator, Peekable};
-use core::slice::Iter as SliceIter;
+use core::mem;
+use core::slice::{self, Iter as SliceIter};
 
 use crate::config;
 use crate::debug;
@@ -96,8 +97,7 @@ impl<L: Lockable> DSPEngine<L> {
             let params = dma::Parameters {
                 kind: dma::TransferKind::PeripheralToMemory(source, 0),
                 transfer_count: config::NO_SAMPLES,
-                // Need to optimize this to allow transferring a halfword.
-                transfer_size: dma::TransferSize::Word,
+                transfer_size: dma::TransferSize::HalfWord,
                 increment_on_read: false,
                 increment_on_write: true,
                 high_priority: true,
@@ -113,7 +113,7 @@ impl<L: Lockable> DSPEngine<L> {
             let params = dma::Parameters {
                 kind: dma::TransferKind::MemoryToPeripheral(0, sink),
                 transfer_count: config::NO_SAMPLES,
-                transfer_size: dma::TransferSize::Word,
+                transfer_size: dma::TransferSize::HalfWord,
                 increment_on_read: true,
                 increment_on_write: false,
                 high_priority: true,
@@ -187,10 +187,17 @@ impl<L: Lockable> DSPEngine<L> {
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
             for (link_no, link) in (0..).zip(chain) {
-                if link_no % 2 == 0 {
-                    link.processor().process(&*proc_buf_a, proc_buf_b);
+                // Transform the [usize] to [u16] for processing.
+                // Since we perform half-word transfers during the DMA, each usize is actually two samples.
+                // The lower two bytes are the first sample, the upper two bytes are the second sample.
+                let (tf_buf_a, tf_buf_b) = unsafe {
+                    (slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES),
+                     slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES))
+                };
+
+                if link_no & 1 == 0 {
+                    link.processor().process(tf_buf_a, tf_buf_b);
                 } else {
-                    link.processor().process(&*proc_buf_b, proc_buf_a);
                 }
             }
 

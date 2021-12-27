@@ -1,6 +1,7 @@
 //! Audio sample buffer management.
 
 use crate::config;
+use crate::static_buf;
 use crate::utilities::cells::{TakeCell, VolatileCell};
 
 /// Current status of samples in an [`SampleContainer`].
@@ -29,10 +30,11 @@ pub struct SampleContainer {
 impl SampleContainer {
     /// Create an [`SampleContainer`].
     pub unsafe fn new() -> SampleContainer {
-        use crate::static_buf;
+        let sample_buffer = static_buf!([usize; config::NO_BUFFER_ENTRIES])
+            .initialize([0; config::NO_BUFFER_ENTRIES]);
 
         SampleContainer {
-            samples: TakeCell::new(static_buf!([usize; config::NO_SAMPLES]).initialize([0; config::NO_SAMPLES])),
+            samples: TakeCell::new(sample_buffer),
             buffer_state: VolatileCell::new(BufferState::Free),
         }
     }
