@@ -68,7 +68,7 @@ pub struct NanoRP2040Connect {
     console: &'static capsules::console::Console<'static>,
     alarm: &'static capsules::alarm::AlarmDriver<
         'static,
-        VirtualMuxAlarm<'static, rp2040::timer::RPTimer<'static>>,
+        VirtualMuxAlarm<'static, rp2040::timer::Alarm<'static>>,
     >,
     gpio: &'static capsules::gpio::GPIO<'static, RPGpioPin<'static>>,
     led: &'static capsules::led::LedDriver<'static, LedHigh<'static, RPGpioPin<'static>>>,
@@ -294,15 +294,15 @@ pub unsafe fn main() {
     );
     DynamicDeferredCall::set_global_instance(dynamic_deferred_caller);
 
-    let mux_alarm = components::alarm::AlarmMuxComponent::new(&peripherals.timer)
-        .finalize(components::alarm_mux_component_helper!(RPTimer));
+    let mux_alarm = components::alarm::AlarmMuxComponent::new(peripherals.timer.allocate_alarm())
+        .finalize(components::alarm_mux_component_helper!(rp2040::timer::Alarm));
 
     let alarm = components::alarm::AlarmDriverComponent::new(
         board_kernel,
         capsules::alarm::DRIVER_NUM,
         mux_alarm,
     )
-    .finalize(components::alarm_component_helper!(RPTimer));
+    .finalize(components::alarm_component_helper!(rp2040::timer::Alarm));
 
     // UART
     // Create a shared UART channel for kernel debug.
