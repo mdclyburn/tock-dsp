@@ -277,7 +277,7 @@ impl<'a> RPTimer<'a> {
 
     pub fn allocate_alarm(&self) -> Result<&Alarm<'a>, ErrorCode> {
         for i in 0..self.alarms.len() {
-            if self.allocated.get() & (1 << i) != 0 {
+            if self.allocated.get() & (1 << i) == 0 {
                 self.allocated.set(self.allocated.get() | (1 << i));
                 return Ok(&self.alarms[i]);
             }
