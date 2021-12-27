@@ -1,6 +1,6 @@
 use kernel::static_init;
 use kernel::Kernel;
-use kernel::dsp::engine::{self, DSPEngine};
+use kernel::dsp::engine::{self, DSPEngine, Resources};
 use kernel::dsp::link::{Chain, Link};
 use kernel::hil::dma::{SourcePeripheral, TargetPeripheral};
 use kernel::platform::sync::UnmanagedSpinlock;
@@ -86,13 +86,15 @@ pub unsafe fn launch() -> ! {
         rp2040::adc::Channel::Channel0,
         engine::sampling_rate() as u32);
 
-    kernel.dsp_loop(chip_resources,
-                    aspk.engine,
-                    board_resources.dma,
-                    board_resources.timer,
-                    SourcePeripheral::ADC,
-                    TargetPeripheral::Custom(0),
-                    &aspk.signal_chain);
+    aspk.engine.run(
+        &engine::Resources {
+            chip: chip_resources,
+            dma: board_resources.dma,
+            time: board_resources.timer.allocate_alarm().unwrap(),
+        },
+        &aspk.signal_chain,
+        SourcePeripheral::ADC,
+        TargetPeripheral::Custom(0));
 }
 
 #[inline(never)]

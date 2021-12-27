@@ -482,23 +482,6 @@ impl Kernel {
         }
     }
 
-    pub fn dsp_loop<C: Chip,
-                    L: Lockable,
-                    F: hil::time::Frequency,
-                    T: hil::time::Ticks>(
-        &self,
-        chip: &C,
-        dsp: &'static DSPEngine<L>,
-        dma: &'static dyn hil::dma::DMA,
-        time: &dyn hil::time::Time<Frequency = F, Ticks = T>,
-        source: hil::dma::SourcePeripheral,
-        sink: hil::dma::TargetPeripheral,
-        processing_chain: &dsp::link::Chain,
-    ) -> !
-    {
-        dsp.run(chip, dma, time, source, sink, processing_chain);
-    }
-
     /// Transfer control from the kernel to a userspace process.
     ///
     /// This function is called by the main kernel loop to run userspace code.

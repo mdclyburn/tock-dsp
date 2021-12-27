@@ -16,6 +16,13 @@ use crate::platform::chip::Chip;
 use crate::sync::{Lockable, Mutex};
 use crate::utilities::cells::MapCell;
 
+pub struct Resources<'a, C: Chip, F: time::Frequency, T: time::Ticks> {
+    pub chip: &'a C,
+    pub dma: &'static dyn DMA,
+    pub time: &'a dyn Time<Frequency = F, Ticks = T>,
+}
+
+/// Iterator to cycle over buffer containers endlessly.
 type CyclicContainerIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
 
 /// Returns the sampling rate of the engine.
@@ -73,16 +80,15 @@ impl<L: Lockable> DSPEngine<L> {
     /// Once configured, the DSP side of the kernel will respond to a short list of interrupts:
     /// SIO, for interprocessor messaging;
     /// DMA, for sample processing and output.
-    pub fn run<C: Chip,
+    pub fn run<'a,
+               C: Chip,
                F: time::Frequency,
                T: time::Ticks>(
         &'static self,
-        chip: &C,
-        dma: &'static dyn DMA,
-        time: &dyn Time<Frequency = F, Ticks = T>,
+        resources: &Resources<'a, C, F, T>,
+        chain: &Chain,
         source: dma::SourcePeripheral,
         sink: dma::TargetPeripheral,
-        chain: &Chain,
     ) -> !
     {
         // Configure sample input DMA.
@@ -96,7 +102,8 @@ impl<L: Lockable> DSPEngine<L> {
                 increment_on_write: true,
                 high_priority: true,
             };
-            dma.configure(&params).expect("failed configuring source DMA channel")
+            resources.dma.configure(&params)
+                .expect("failed configuring source DMA channel")
         };
         source_dma_channel.set_client(self);
         self.source_dma_channel_no.set(source_dma_channel.channel_no() as u8);
@@ -111,7 +118,8 @@ impl<L: Lockable> DSPEngine<L> {
                 increment_on_write: false,
                 high_priority: true,
             };
-            dma.configure(&params).expect("failed configuring sink DMA channel")
+            resources.dma.configure(&params)
+                .expect("failed configuring sink DMA channel")
         };
         sink_dma_channel.set_client(self);
         self.sink_dma_channel_no.set(sink_dma_channel.channel_no() as u8);
@@ -149,7 +157,7 @@ impl<L: Lockable> DSPEngine<L> {
 
                 while in_buffer.is_none() {
                     in_buffer = unsafe {
-                        chip.atomic(|| {
+                        resources.chip.atomic(|| {
                             if input_buffer.state() == BufferState::Unprocessed {
                                 let buffer = input_buffer.take(BufferState::Processing)
                                     .expect("buffer unexpectedly missing");
@@ -163,7 +171,7 @@ impl<L: Lockable> DSPEngine<L> {
 
                 while out_buffer.is_none() {
                     out_buffer = unsafe {
-                        chip.atomic(|| {
+                        resources.chip.atomic(|| {
                             if output_buffer.state() == BufferState::Free {
                                 let buffer = output_buffer.take(BufferState::Processing)
                                     .expect("buffer unexpectedly missing");
@@ -177,9 +185,6 @@ impl<L: Lockable> DSPEngine<L> {
 
                 (in_buffer.unwrap(), out_buffer.unwrap())
             };
-
-            // Start timing the DSP loop.
-            let loop_start = time.now();
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -208,13 +213,6 @@ impl<L: Lockable> DSPEngine<L> {
                 self.playback_stalled.set(false);
                 let other_buf = output_buffer.take(BufferState::Playing).unwrap();
                 sink_dma_channel.start(other_buf);
-            }
-
-            // End timing for the loop.
-            // TODO: make this a periodic interrupt without messing up Tock.
-            let loop_latency = time.ticks_to_us(time.now()) - time.ticks_to_us(loop_start);
-            if let Ok(stats_guard) = self.stats.try_lock() {
-                stats_guard.map(|stats| stats.processing_loop_us = loop_latency as usize);
             }
         }
     }
