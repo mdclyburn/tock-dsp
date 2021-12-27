@@ -135,8 +135,6 @@ impl<L: Lockable> DSPEngine<L> {
         self.initiate_sampling(source_dma_channel)
             .expect("failed to start ADC sampling DMA");
 
-        // Point in time last timing happened.
-        let mut t_last_timing = 0;
         // Depending on the length of the signal chain and the processing strategy,
         // the samples go back and forth between buffers as we go through the chain.
         // If there are an even number of processors in the chain,
@@ -229,8 +227,6 @@ impl<L: Lockable> DSPEngine<L> {
     }
 }
 
-static mut start: u32 = 0;
-
 impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
     /// Restore incoming sample buffer and restart a transfer.
     ///
@@ -262,8 +258,6 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
                     panic!("All input buffers exhausted.");
                 } else {
                     let buffer = next_container.take(BufferState::Collecting).unwrap();
-                    // unsafe { debug!("sampling time: {}μs", *(0x40054028 as *const u32) - start) };
-                    // unsafe { start = *(0x40054028 as *const u32) };
                     channel.start(buffer)
                         .expect("could not start DMA from source");
                 }
@@ -284,8 +278,6 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
                     self.playback_stalled.set(true);
                 } else {
                     let buffer = next_container.take(BufferState::Playing).unwrap();
-                    // unsafe { debug!("playback time: {}μs", *(0x40054028 as *const u32) - start) };
-                    // unsafe { start = *(0x40054028 as *const u32) };
                     channel.start(buffer)
                         .expect("could not start DMA to sink");
                 }
