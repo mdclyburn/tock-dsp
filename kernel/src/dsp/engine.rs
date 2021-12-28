@@ -58,15 +58,15 @@ impl<L: Lockable> DSPEngine<L> {
         DSPEngine {
             stats,
             in_containers: [SampleContainer::new(),
-                         SampleContainer::new(),
-                         SampleContainer::new(),
-                         SampleContainer::new(),
-                         SampleContainer::new()],
+                            SampleContainer::new(),
+                            SampleContainer::new(),
+                            SampleContainer::new(),
+                            SampleContainer::new()],
             out_containers: [SampleContainer::new(),
-                          SampleContainer::new(),
-                          SampleContainer::new(),
-                          SampleContainer::new(),
-                          SampleContainer::new()],
+                             SampleContainer::new(),
+                             SampleContainer::new(),
+                             SampleContainer::new(),
+                             SampleContainer::new()],
             source_dma_channel_no: Cell::new(99),
             sink_dma_channel_no: Cell::new(99),
             in_container_iter: MapCell::empty(),
@@ -92,6 +92,7 @@ impl<L: Lockable> DSPEngine<L> {
         sink: dma::TargetPeripheral,
     ) -> !
     {
+
         // Configure sample input DMA.
         let source_dma_channel = {
             let params = dma::Parameters {
@@ -183,21 +184,40 @@ impl<L: Lockable> DSPEngine<L> {
 
                 (in_buffer.unwrap(), out_buffer.unwrap())
             };
+            debug!("in: {:#010X}, out: {:#010X}", proc_buf_a.as_ptr() as usize, proc_buf_b.as_ptr() as usize);
+
+            // Make it possible to see a signed representation of the buffers:
+            // from [usize] to [i16] for processing and output.
+            // Since we perform half-word transfers during the DMA, each usize is actually two samples.
+            // The lower two bytes are the first sample, the upper two bytes are the second sample.
+            //
+            // This means that we end up double-aliasing the buffers here.
+            // We continue to keep both representations around because
+            // the links get the signed numbers, and the usize buffer is what we .put() back.
+            let (sproc_buf_a, sproc_buf_b, uproc_buf_a, uproc_buf_b) = unsafe {
+                (slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut i16, config::NO_BUFFER_ENTRIES * 2),
+                 slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut i16, config::NO_BUFFER_ENTRIES * 2),
+                 slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES * 2),
+                 slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES * 2))
+            };
+
+            // Translate the samples toward the baseline.
+            // Perhaps dynamically learn what the baseline should be later.
+            for (usample, isample) in uproc_buf_a.iter_mut().zip(sproc_buf_a.iter_mut()) {
+                *isample = if *usample >= i16::MAX as u16 {
+                    0 + (*usample - (i16::MAX as u16)) as i16
+                } else {
+                    i16::MIN + (*usample as i16)
+                };
+            }
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
             for (link_no, link) in (0..).zip(chain) {
-                // Transform the [usize] to [u16] for processing.
-                // Since we perform half-word transfers during the DMA, each usize is actually two samples.
-                // The lower two bytes are the first sample, the upper two bytes are the second sample.
-                let (tf_buf_a, tf_buf_b) = unsafe {
-                    (slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES),
-                     slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES))
-                };
-
                 if link_no & 1 == 0 {
-                    link.processor().process(tf_buf_a, tf_buf_b);
+                    link.processor().process(sproc_buf_a, sproc_buf_b);
                 } else {
+                    link.processor().process(sproc_buf_b, sproc_buf_a);
                 }
             }
 
@@ -214,10 +234,14 @@ impl<L: Lockable> DSPEngine<L> {
             // Disable playback and mark buffer as free.
             // output_buffer.put(other_buf, BufferState::Free);
 
-            if self.playback_stalled.get() {
-                self.playback_stalled.set(false);
-                let other_buf = output_buffer.take(BufferState::Playing).unwrap();
-                sink_dma_channel.start(other_buf);
+            unsafe {
+                resources.chip.atomic(|| {
+                    if self.playback_stalled.get() {
+                        self.playback_stalled.set(false);
+                        let other_buf = output_buffer.take(BufferState::Playing).unwrap();
+                        sink_dma_channel.start(other_buf);
+                    }
+                });
             }
         }
     }
