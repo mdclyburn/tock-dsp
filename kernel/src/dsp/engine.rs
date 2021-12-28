@@ -6,7 +6,7 @@ use core::mem;
 use core::slice::{self, Iter as SliceIter};
 
 use crate::config;
-use crate::debug;
+use crate::{debug, static_buf};
 use crate::dsp::buffer::{SampleContainer, BufferState};
 use crate::dsp::link::Chain;
 use crate::errorcode::ErrorCode;
@@ -54,19 +54,18 @@ pub struct DSPEngine<L: Lockable> {
 
 impl<L: Lockable> DSPEngine<L> {
     /// Create a new `DSPEngine` instance.
-    pub unsafe fn new(stats: Mutex<L, Statistics>) -> DSPEngine<L> {
+    pub unsafe fn new<'a>(
+        stats: Mutex<L, Statistics>,
+    ) -> DSPEngine<L>
+    {
         DSPEngine {
             stats,
-            in_containers: [SampleContainer::new(),
-                            SampleContainer::new(),
-                            SampleContainer::new(),
-                            SampleContainer::new(),
-                            SampleContainer::new()],
-            out_containers: [SampleContainer::new(),
-                             SampleContainer::new(),
-                             SampleContainer::new(),
-                             SampleContainer::new(),
-                             SampleContainer::new()],
+            in_containers: [SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
+                            SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
+                            SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES]))],
+            out_containers: [SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
+                            SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
+                            SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES]))],
             source_dma_channel_no: Cell::new(99),
             sink_dma_channel_no: Cell::new(99),
             in_container_iter: MapCell::empty(),
@@ -142,7 +141,7 @@ impl<L: Lockable> DSPEngine<L> {
         // then we must bounce buffer ownership between the SampleContainers to avoid copying samples.
         let exchange_buffers_after_processing = {
             let link_count = chain.into_iter().count();
-            link_count % 2 == 0
+            link_count & 1 == 0
         };
         loop {
             // Obtain the next container of unprocessed sequence of audio samples.
@@ -184,7 +183,9 @@ impl<L: Lockable> DSPEngine<L> {
 
                 (in_buffer.unwrap(), out_buffer.unwrap())
             };
-            debug!("in: {:#010X}, out: {:#010X}", proc_buf_a.as_ptr() as usize, proc_buf_b.as_ptr() as usize);
+
+            // let source_buffer_addr = proc_buf_a.as_ptr() as usize;
+            // debug!("Engine processing: {:#010X}", source_buffer_addr);
 
             // Make it possible to see a signed representation of the buffers:
             // from [usize] to [i16] for processing and output.
@@ -203,13 +204,16 @@ impl<L: Lockable> DSPEngine<L> {
 
             // Translate the samples toward the baseline.
             // Perhaps dynamically learn what the baseline should be later.
+            let before = unsafe { core::ptr::read_volatile(&uproc_buf_a[0] as *const u16) };
             for (usample, isample) in uproc_buf_a.iter_mut().zip(sproc_buf_a.iter_mut()) {
                 *isample = if *usample >= i16::MAX as u16 {
-                    0 + (*usample - (i16::MAX as u16)) as i16
+                    (*usample - (i16::MAX as u16)) as i16
                 } else {
                     i16::MIN + (*usample as i16)
                 };
             }
+            let after = unsafe { core::ptr::read_volatile(&sproc_buf_a[0] as *const i16) };
+            debug!("{} → {}", before, after);
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -223,22 +227,27 @@ impl<L: Lockable> DSPEngine<L> {
 
             // Replace the buffers.
             // The output buffer needs to go to BufferState::Ready when we implement playing processed samples.
-            let other_buf = if exchange_buffers_after_processing {
-                input_buffer.put(proc_buf_b, BufferState::Free);
-                proc_buf_a
-            } else {
-                input_buffer.put(proc_buf_a, BufferState::Free);
-                proc_buf_b
-            };
-            output_buffer.put(other_buf, BufferState::Ready);
-            // Disable playback and mark buffer as free.
-            // output_buffer.put(other_buf, BufferState::Free);
+            unsafe {
+                resources.chip.atomic(|| {
+                    let other_buf = if exchange_buffers_after_processing {
+                        input_buffer.put(proc_buf_b, BufferState::Free);
+                        proc_buf_a
+                    } else {
+                        input_buffer.put(proc_buf_a, BufferState::Free);
+                        proc_buf_b
+                    };
+                    output_buffer.put(other_buf, BufferState::Ready);
+                    // Disable playback and mark buffer as free.
+                    // output_buffer.put(other_buf, BufferState::Free);
+                });
+            }
 
             unsafe {
                 resources.chip.atomic(|| {
                     if self.playback_stalled.get() {
                         self.playback_stalled.set(false);
                         let other_buf = output_buffer.take(BufferState::Playing).unwrap();
+                        unsafe { start = *(0x40054028 as *const u32) };
                         sink_dma_channel.start(other_buf);
                     }
                 });
@@ -254,9 +263,13 @@ impl<L: Lockable> DSPEngine<L> {
             .map(|iter| iter.peek().unwrap().take(BufferState::Collecting).unwrap())
             .unwrap();
 
+        unsafe { start_collection = *(0x40054028 as *const u32) };
         dma_channel.start(buffer)
     }
 }
+
+static mut start: u32 = 0;
+static mut start_collection: u32 = 0;
 
 impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
     /// Restore incoming sample buffer and restart a transfer.
@@ -266,10 +279,15 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
     fn transfer_done(&self, channel: &dyn DMAChannel, buffer: &'static mut [usize]) {
         let channel_no = channel.channel_no() as u8;
         if channel_no == self.source_dma_channel_no.get() {
+            let now = unsafe { *(0x40054028 as *const u32) };
+            // debug!("collect: {}μs", unsafe { now - start_collection });
+
             // The transfer that completed is for the ADC samples.
             self.in_container_iter.map(move |iter| {
                 // Replace the buffer as an unprocessed buffer.
                 let vacant_container = iter.peek().unwrap();
+                // let source_buffer_done = buffer.as_ptr() as usize;
+                // debug!("DMA done with: {:#010X}", source_buffer_done);
                 vacant_container.put(buffer, BufferState::Unprocessed);
 
                 // Re-initiate transfer from the source to the next buffer.
@@ -289,11 +307,15 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
                     panic!("All input buffers exhausted.");
                 } else {
                     let buffer = next_container.take(BufferState::Collecting).unwrap();
+                    unsafe { start_collection = *(0x40054028 as *const u32) };
                     channel.start(buffer)
                         .expect("could not start DMA from source");
                 }
             });
         } else if channel_no == self.sink_dma_channel_no.get() {
+            let now = unsafe { *(0x40054028 as *const u32) };
+            // debug!("playback: {}μs", unsafe { now - start });
+
             // The transfer that completed is for the sink.
             self.out_container_iter.map(move |iter| {
                 // Replace the buffer as a free buffer.
@@ -307,8 +329,10 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
                 let next_container = iter.peek().unwrap();
                 if next_container.state() != BufferState::Ready {
                     self.playback_stalled.set(true);
+                    // debug!("STL");
                 } else {
                     let buffer = next_container.take(BufferState::Playing).unwrap();
+                    unsafe { start = *(0x40054028 as *const u32) };
                     channel.start(buffer)
                         .expect("could not start DMA to sink");
                 }

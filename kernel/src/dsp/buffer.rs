@@ -1,5 +1,7 @@
 //! Audio sample buffer management.
 
+use core::mem::MaybeUninit;
+
 use crate::config;
 use crate::static_buf;
 use crate::utilities::cells::{TakeCell, VolatileCell};
@@ -28,13 +30,10 @@ pub struct SampleContainer {
 }
 
 impl SampleContainer {
-    /// Create an [`SampleContainer`].
-    pub unsafe fn new() -> SampleContainer {
-        let sample_buffer = static_buf!([usize; config::NO_BUFFER_ENTRIES])
-            .initialize([0; config::NO_BUFFER_ENTRIES]);
-
+    /// Create a [`SampleContainer`].
+    pub unsafe fn new(samples_buffer: &'static mut [usize; config::NO_BUFFER_ENTRIES]) -> SampleContainer {
         SampleContainer {
-            samples: TakeCell::new(sample_buffer),
+            samples: TakeCell::new(samples_buffer),
             buffer_state: VolatileCell::new(BufferState::Free),
         }
     }
@@ -58,5 +57,16 @@ impl SampleContainer {
     /// Current state of samples in the buffer.
     pub fn state(&self) -> BufferState {
         self.buffer_state.get()
+    }
+
+    /// Memory address of the contained buffer, or None if buffer is not present.
+    pub fn addr(&self) -> Option<usize> {
+        if let Some(buffer) = self.samples.take() {
+            let addr = buffer.as_ptr() as usize;
+            self.samples.put(Some(buffer));
+            Some(addr)
+        } else {
+            None
+        }
     }
 }
