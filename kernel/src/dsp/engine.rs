@@ -110,7 +110,7 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                 high_priority: true,
             };
             resources.dma.configure(&params)
-                .expect("failed configuring source DMA channel")
+                .unwrap()
         };
         source_dma_channel.set_client(self);
         self.source_dma_channel_no.set(source_dma_channel.channel_no() as u8);
@@ -126,7 +126,7 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                 high_priority: true,
             };
             resources.dma.configure(&params)
-                .expect("failed configuring sink DMA channel")
+                .unwrap()
         };
         sink_dma_channel.set_client(self);
         self.sink_dma_channel_no.set(sink_dma_channel.channel_no() as u8);
@@ -140,7 +140,8 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
 
         // Start sample collection.
         self.initiate_sampling(source_dma_channel)
-            .expect("failed to start ADC sampling DMA");
+            // Initiating sampling should not fail.
+            .unwrap();
 
         // Depending on the length of the signal chain and the processing strategy,
         // the samples go back and forth between buffers as we go through the chain.
@@ -153,6 +154,7 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
         loop {
             // Obtain the next container of unprocessed sequence of audio samples.
             // Obtain the next container of free output buffer for processed samples.
+            // .unwrap(): these are cyclic iterators of slices.
             let input_buffer = process_in_buffer_it.next().unwrap();
             let output_buffer = process_out_buffer_it.next().unwrap();
 
@@ -165,7 +167,8 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                         resources.chip.atomic(|| {
                             if input_buffer.state() == BufferState::Unprocessed {
                                 let buffer = input_buffer.take(BufferState::Processing)
-                                    .expect("buffer unexpectedly missing");
+                                    // Unprocessed buffers must be in the container.
+                                    .unwrap();
                                 Some(buffer)
                             } else {
                                 None
@@ -179,7 +182,8 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                         resources.chip.atomic(|| {
                             if output_buffer.state() == BufferState::Free {
                                 let buffer = output_buffer.take(BufferState::Processing)
-                                    .expect("buffer unexpectedly missing");
+                                    // Free buffers must be in the container.
+                                    .unwrap();
                                 Some(buffer)
                             } else {
                                 None
@@ -188,6 +192,7 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                     };
                 }
 
+                // These Option<_>s were populated by this flow of code.
                 (in_buffer.unwrap(), out_buffer.unwrap())
             };
 
@@ -260,7 +265,9 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                 resources.chip.atomic(|| {
                     if self.playback_stalled.get() {
                         self.playback_stalled.set(false);
-                        let other_buf = output_buffer.take(BufferState::Playing).unwrap();
+                        let other_buf = output_buffer.take(BufferState::Playing)
+                            // We previously just put this buffer back. If it's gone, sink DMA has run awry and taken it.
+                            .unwrap();
                         sink_dma_channel.start(other_buf);
                     }
                 });
@@ -273,11 +280,28 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
         let buffer_iter = self.in_containers.iter().cycle().peekable();
         self.in_container_iter.put(buffer_iter);
         let buffer = self.in_container_iter
-            .map(|iter| iter.peek().unwrap().take(BufferState::Collecting).unwrap())
+            .map(|iter| {
+                iter.peek()
+                    // Cyclic iterator; if this fails, something is very wrong.
+                    .unwrap()
+                    .take(BufferState::Collecting)
+                    // Initiating sampling should have all buffers in place.
+                    .unwrap()
+            })
             .unwrap();
 
         self.t_collect_start.set(self.time.now());
         dma_channel.start(buffer)
+    }
+
+    /// Print sample buffer state.
+    fn print_state(&self) {
+        for buffer in self.in_containers.iter() {
+            debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
+        }
+        for buffer in self.out_containers.iter() {
+            debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
+        }
     }
 }
 
@@ -292,7 +316,9 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngi
             // The transfer that completed is for the ADC samples.
             self.in_container_iter.map(move |iter| {
                 // Replace the buffer as an unprocessed buffer.
-                let vacant_container = iter.peek().unwrap();
+                let vacant_container = iter.peek()
+                    // Cyclic iterator; if this fails, something is up.
+                    .unwrap();
                 // let source_buffer_done = buffer.as_ptr() as usize;
                 // debug!("DMA done with: {:#010X}", source_buffer_done);
                 vacant_container.put(buffer, BufferState::Unprocessed);
@@ -302,15 +328,10 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngi
                 // we've caught up to the oldest buffer that still hasn't completed processing.
                 // We hard-fail here because it means the DSP cycle is delayed.
                 let _ = iter.next();
-                let next_container = iter.peek().unwrap();
+                let next_container = iter.peek()
+                    // Cyclic iterator; if this fails, something is up.
+                    .unwrap();
                 if next_container.state() != BufferState::Free {
-                    debug!("Sampling has filled all buffers!");
-                    for buffer in self.in_containers.iter() {
-                        debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
-                    }
-                    for buffer in self.out_containers.iter() {
-                        debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
-                    }
                     panic!("All input buffers exhausted.");
                 } else {
                     self.stats.try_map(|stats| {
@@ -319,16 +340,21 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngi
                             now.wrapping_sub(self.t_collect_start.replace(now)));
                     });
 
-                    let buffer = next_container.take(BufferState::Collecting).unwrap();
+                    let buffer = next_container.take(BufferState::Collecting)
+                        // Free buffers must be in the container; this function is atomic.
+                        .unwrap();
                     channel.start(buffer)
-                        .expect("could not start DMA from source");
+                        // Starting DMA must succeed; hard-failing is desirable.
+                        .unwrap();
                 }
             });
         } else if channel_no == self.sink_dma_channel_no.get() {
             // The transfer that completed is for the sink.
             self.out_container_iter.map(move |iter| {
                 // Replace the buffer as a free buffer.
-                let vacant_container = iter.peek().unwrap();
+                let vacant_container = iter.peek()
+                    // Cyclic iterator; if this fails, something is up.
+                    .unwrap();
                 vacant_container.put(buffer, BufferState::Free);
 
                 // Re-initiate transfer to the sink from the next buffer.
@@ -338,11 +364,13 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngi
                 let next_container = iter.peek().unwrap();
                 if next_container.state() != BufferState::Ready {
                     self.playback_stalled.set(true);
-                    // debug!("STL");
                 } else {
-                    let buffer = next_container.take(BufferState::Playing).unwrap();
+                    let buffer = next_container.take(BufferState::Playing)
+                        // Ready buffers must be in the container; this function is atomic.
+                        .unwrap();
                     channel.start(buffer)
-                        .expect("could not start DMA to sink");
+                        // Starting DMA must succeed; hard-failing is desirable.
+                        .unwrap();
                 }
             });
         } else {
