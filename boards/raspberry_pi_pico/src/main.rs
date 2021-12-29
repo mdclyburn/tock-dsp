@@ -423,6 +423,14 @@ pub unsafe fn main() {
         let pin = peripherals.pins.get_pin(pin_id);
         pin.set_function(GpioFunction::PIO0);
     }
+    {
+        use kernel::hil::gpio::Configure;
+
+        peripherals.pins.get_pin(RPGpio::GPIO26).deactivate_pads();
+        peripherals.pins.get_pin(RPGpio::GPIO26)
+            .set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
+    }
+
 
     let gpio = GpioComponent::new(
         board_kernel,
