@@ -209,19 +209,25 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                  slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES * 2))
             };
 
-            // Translate the samples toward the baseline.
+            // Scale (12- to 16-bit), translate the samples toward the baseline.
             // Perhaps dynamically learn what the baseline should be later.
+            // TODO: this code should be wrapped up in the sample provider.
+            // let raw = proc_buf_a[1];
             for (usample, isample) in uproc_buf_a.iter_mut().zip(sproc_buf_a.iter_mut()) {
-                *isample = if *usample >= i16::MAX as u16 {
-                    (*usample - (i16::MAX as u16)) as i16
+                // Scale the sample up to a 16-bit value.
+                // u12::MAX << 4 = 65,520 cannot exceed u16::MAX, so there's no worry about overflow.
+                let usample16 = *usample << 4;
+                *isample = if usample16 >= i16::MAX as u16 {
+                    (usample16 - (i16::MAX as u16)) as i16
                 } else {
-                    i16::MIN + (*usample as i16)
+                    i16::MIN + (usample16 as i16)
                 };
             }
 
-            self.stats.try_map(|stats| {
-                debug!("ct: {}μs", stats.collect_process_us);
-            });
+            // self.stats.try_map(|stats| {
+            //     debug!("ct: {}μs", stats.collect_process_us);
+            // });
+            // debug!("s: {} → {}", (raw & 0b111111111111) << 4, sproc_buf_a[1]);
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
