@@ -24,7 +24,7 @@ impl<'a, T> MutexGuard<'a, T> {
         }
     }
 
-    pub fn map<F, R>(&self, f: F) -> R
+    fn map<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
@@ -36,7 +36,7 @@ impl<'a, T> MutexGuard<'a, T> {
         let r = unsafe {
             ((self.resource_access as *const T) as *mut T)
                 .as_mut()
-                .unwrap()
+                .unwrap() // Bad if the pointer is a null pointer.
         };
         f(r)
     }
@@ -88,5 +88,25 @@ impl<L: Lockable, T> Mutex<L, T> {
         while !self.lock.try_lock() {  }
 
         MutexGuard::new(&self.lock, self.resource)
+    }
+
+    /// Attempt to gain access to the resource to run an operation.
+    ///
+    /// The equivalent of [`Mutex::try_lock()`],
+    /// but also accepts and executes a lambda on the contained resource.
+    pub fn try_map<F, R>(&self, f: F) -> Result<R, ErrorCode>
+    where
+        F: FnOnce(&mut T) -> R,
+    {
+        self.try_lock().map(|guard| guard.map(f))
+    }
+
+    /// Repeatedly attempt to access the resource, running an operation when successful.
+    pub fn map<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut T) -> R
+    {
+        let guard = self.lock();
+        guard.map(f)
     }
 }

@@ -219,9 +219,9 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                 };
             }
 
-            self.stats.try_lock().map(|guard| guard.map(|stats| {
+            self.stats.try_map(|stats| {
                 debug!("ct: {}μs", stats.collect_process_us);
-            }));
+            });
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -307,11 +307,11 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngi
                     }
                     panic!("All input buffers exhausted.");
                 } else {
-                    self.stats.try_lock().map(|guard| guard.map(|stats| {
+                    self.stats.try_map(|stats| {
                         let now = self.time.now();
                         stats.collect_process_us = self.time.ticks_to_us(
                             now.wrapping_sub(self.t_collect_start.replace(now)));
-                    }));
+                    });
 
                     let buffer = next_container.take(BufferState::Collecting).unwrap();
                     channel.start(buffer)
