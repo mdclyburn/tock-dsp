@@ -196,6 +196,9 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                 (in_buffer.unwrap(), out_buffer.unwrap())
             };
 
+            // Start timing the processing loop.
+            let t_processing_loop_start = self.time.now();
+
             // let source_buffer_addr = proc_buf_a.as_ptr() as usize;
             // debug!("Engine processing: {:#010X}", source_buffer_addr);
 
@@ -272,6 +275,13 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
                     }
                 });
             }
+
+            // End timing the processing loop.
+            let _ = self.stats.try_map(|stats| {
+                let now = self.time.now();
+                stats.processing_loop_us = self.time.ticks_to_us(
+                    now.wrapping_sub(t_processing_loop_start));
+            });
         }
     }
 
@@ -320,7 +330,6 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngi
                     // Cyclic iterator; if this fails, something is up.
                     .unwrap();
                 // let source_buffer_done = buffer.as_ptr() as usize;
-                // debug!("DMA done with: {:#010X}", source_buffer_done);
                 vacant_container.put(buffer, BufferState::Unprocessed);
 
                 // Re-initiate transfer from the source to the next buffer.
@@ -334,7 +343,7 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngi
                 if next_container.state() != BufferState::Free {
                     panic!("All input buffers exhausted.");
                 } else {
-                    self.stats.try_map(|stats| {
+                    let _ = self.stats.try_map(|stats| {
                         let now = self.time.now();
                         stats.collect_process_us = self.time.ticks_to_us(
                             now.wrapping_sub(self.t_collect_start.replace(now)));
@@ -384,6 +393,6 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngi
 #[derive(Default)]
 pub struct Statistics {
     collect_process_us: u32,
-    processing_loop_us: usize,
+    processing_loop_us: u32,
     playback_time_us: u32,
 }
