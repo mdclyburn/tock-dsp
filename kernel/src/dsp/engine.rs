@@ -17,10 +17,9 @@ use crate::platform::chip::Chip;
 use crate::sync::{Lockable, Mutex};
 use crate::utilities::cells::MapCell;
 
-pub struct Resources<'a, C: Chip, F: time::Frequency, T: time::Ticks> {
+pub struct Resources<'a, C: Chip> {
     pub chip: &'a C,
     pub dma: &'static dyn DMA,
-    pub time: &'a dyn Time<Frequency = F, Ticks = T>,
 }
 
 /// Iterator to cycle over buffer containers endlessly.
@@ -33,9 +32,11 @@ pub fn sampling_rate() -> usize { config::SAMPLING_RATE }
 ///
 /// This is the heart of the DSP.
 /// Start signal processing with [`DSPEngine::run()`].
-pub struct DSPEngine<L: Lockable> {
+pub struct DSPEngine<L: Lockable, F: 'static + time::Frequency, T: 'static + time::Ticks> {
     /// Runtime statistics.
     stats: Mutex<L, Statistics>,
+    /// Time provider.
+    time: &'static dyn Time<Frequency = F, Ticks = T>,
     /// Buffers for incoming audio samples.
     in_containers: [SampleContainer; config::SAMPLE_BUFFERS],
     /// Buffers for outgoing audio samples.
@@ -50,27 +51,36 @@ pub struct DSPEngine<L: Lockable> {
     out_container_iter: MapCell<CyclicContainerIter>,
     /// Whether playback DMA is suspended due to ready buffers being unavailable.
     playback_stalled: Cell<bool>,
+
+    /// Time the last sample collection began.
+    t_collect_start: Cell<T>,
+    /// Time the last playback started.
+    t_playback_start: Cell<T>,
 }
 
-impl<L: Lockable> DSPEngine<L> {
+impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
     /// Create a new `DSPEngine` instance.
     pub unsafe fn new<'a>(
         stats: Mutex<L, Statistics>,
-    ) -> DSPEngine<L>
+        time: &'static dyn time::Time<Frequency = F, Ticks = T>,
+    ) -> DSPEngine<L, F, T>
     {
         DSPEngine {
             stats,
+            time,
             in_containers: [SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
                             SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
                             SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES]))],
             out_containers: [SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
-                            SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
-                            SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES]))],
+                             SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
+                             SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES]))],
             source_dma_channel_no: Cell::new(99),
             sink_dma_channel_no: Cell::new(99),
             in_container_iter: MapCell::empty(),
             out_container_iter: MapCell::empty(),
             playback_stalled: Cell::new(true),
+            t_collect_start: Cell::new(time.ticks_from_ms(0)),
+            t_playback_start: Cell::new(time.ticks_from_ms(0)),
         }
     }
 
@@ -80,12 +90,9 @@ impl<L: Lockable> DSPEngine<L> {
     /// Once configured, the DSP side of the kernel will respond to a short list of interrupts:
     /// SIO, for interprocessor messaging;
     /// DMA, for sample processing and output.
-    pub fn run<'a,
-               C: Chip,
-               F: time::Frequency,
-               T: time::Ticks>(
+    pub fn run<'a, C: Chip>(
         &'static self,
-        resources: &Resources<'a, C, F, T>,
+        resources: &Resources<'a, C>,
         chain: &Chain,
         source: dma::SourcePeripheral,
         sink: dma::TargetPeripheral,
@@ -204,7 +211,6 @@ impl<L: Lockable> DSPEngine<L> {
 
             // Translate the samples toward the baseline.
             // Perhaps dynamically learn what the baseline should be later.
-            let before = unsafe { core::ptr::read_volatile(&uproc_buf_a[0] as *const u16) };
             for (usample, isample) in uproc_buf_a.iter_mut().zip(sproc_buf_a.iter_mut()) {
                 *isample = if *usample >= i16::MAX as u16 {
                     (*usample - (i16::MAX as u16)) as i16
@@ -212,8 +218,10 @@ impl<L: Lockable> DSPEngine<L> {
                     i16::MIN + (*usample as i16)
                 };
             }
-            let after = unsafe { core::ptr::read_volatile(&sproc_buf_a[0] as *const i16) };
-            debug!("{} → {}", before, after);
+
+            self.stats.try_lock().map(|guard| guard.map(|stats| {
+                debug!("ct: {}μs", stats.collect_process_us);
+            }));
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -247,7 +255,6 @@ impl<L: Lockable> DSPEngine<L> {
                     if self.playback_stalled.get() {
                         self.playback_stalled.set(false);
                         let other_buf = output_buffer.take(BufferState::Playing).unwrap();
-                        unsafe { start = *(0x40054028 as *const u32) };
                         sink_dma_channel.start(other_buf);
                     }
                 });
@@ -263,15 +270,12 @@ impl<L: Lockable> DSPEngine<L> {
             .map(|iter| iter.peek().unwrap().take(BufferState::Collecting).unwrap())
             .unwrap();
 
-        unsafe { start_collection = *(0x40054028 as *const u32) };
+        self.t_collect_start.set(self.time.now());
         dma_channel.start(buffer)
     }
 }
 
-static mut start: u32 = 0;
-static mut start_collection: u32 = 0;
-
-impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
+impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngine<L, F, T> {
     /// Restore incoming sample buffer and restart a transfer.
     ///
     /// The DSP engine receives this callback for completed transfers from the sample source and sink.
@@ -279,9 +283,6 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
     fn transfer_done(&self, channel: &dyn DMAChannel, buffer: &'static mut [usize]) {
         let channel_no = channel.channel_no() as u8;
         if channel_no == self.source_dma_channel_no.get() {
-            let now = unsafe { *(0x40054028 as *const u32) };
-            // debug!("collect: {}μs", unsafe { now - start_collection });
-
             // The transfer that completed is for the ADC samples.
             self.in_container_iter.map(move |iter| {
                 // Replace the buffer as an unprocessed buffer.
@@ -306,16 +307,18 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
                     }
                     panic!("All input buffers exhausted.");
                 } else {
+                    self.stats.try_lock().map(|guard| guard.map(|stats| {
+                        let now = self.time.now();
+                        stats.collect_process_us = self.time.ticks_to_us(
+                            now.wrapping_sub(self.t_collect_start.replace(now)));
+                    }));
+
                     let buffer = next_container.take(BufferState::Collecting).unwrap();
-                    unsafe { start_collection = *(0x40054028 as *const u32) };
                     channel.start(buffer)
                         .expect("could not start DMA from source");
                 }
             });
         } else if channel_no == self.sink_dma_channel_no.get() {
-            let now = unsafe { *(0x40054028 as *const u32) };
-            // debug!("playback: {}μs", unsafe { now - start });
-
             // The transfer that completed is for the sink.
             self.out_container_iter.map(move |iter| {
                 // Replace the buffer as a free buffer.
@@ -332,7 +335,6 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
                     // debug!("STL");
                 } else {
                     let buffer = next_container.take(BufferState::Playing).unwrap();
-                    unsafe { start = *(0x40054028 as *const u32) };
                     channel.start(buffer)
                         .expect("could not start DMA to sink");
                 }
@@ -347,5 +349,7 @@ impl<L: Lockable> dma::DMAClient for DSPEngine<L> {
 
 #[derive(Default)]
 pub struct Statistics {
+    collect_process_us: u32,
     processing_loop_us: usize,
+    playback_time_us: u32,
 }

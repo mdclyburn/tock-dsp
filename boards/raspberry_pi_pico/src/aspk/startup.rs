@@ -3,6 +3,7 @@ use kernel::Kernel;
 use kernel::dsp::engine::{self, DSPEngine, Resources};
 use kernel::dsp::link::{Chain, Link};
 use kernel::hil::dma::{SourcePeripheral, TargetPeripheral};
+use kernel::hil::time;
 use kernel::platform::sync::UnmanagedSpinlock;
 use kernel::sync::{Lockable, Mutex};
 
@@ -14,8 +15,8 @@ use rp2040::pio::{self, PIO, PIOBlock};
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::interrupt;
 
-struct ASPKResources<L: 'static + Lockable> {
-    engine: &'static DSPEngine<L>,
+struct ASPKResources<L: 'static + Lockable, F: 'static + time::Frequency, T: 'static + time::Ticks> {
+    engine: &'static DSPEngine<L, F, T>,
     signal_chain: Chain,
 }
 
@@ -26,7 +27,10 @@ macro_rules! create_link {
     }}
 }
 
-unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKResources<UnmanagedSpinlock> {
+unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKResources<UnmanagedSpinlock,
+                                                                                      time::Freq1MHz,
+                                                                                      time::Ticks32>
+{
     // Create statistics container.
     let mtx_stats = {
         use kernel::platform::KernelResources;
@@ -44,7 +48,9 @@ unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKReso
     };
 
     ASPKResources {
-        engine: static_init!(DSPEngine<UnmanagedSpinlock>, DSPEngine::new(mtx_stats)),
+        engine: static_init!(
+            DSPEngine<UnmanagedSpinlock, time::Freq1MHz, time::Ticks32>,
+            DSPEngine::new(mtx_stats, board_resources.timer)),
         signal_chain: Chain::new(&[
             create_link!(effects::NoOp, effects::NoOp::new()),
         ]),
@@ -92,7 +98,6 @@ pub unsafe fn launch() -> ! {
         &engine::Resources {
             chip: chip_resources,
             dma: board_resources.dma,
-            time: board_resources.timer.allocate_alarm().unwrap(),
         },
         &aspk.signal_chain,
         SourcePeripheral::ADC,
