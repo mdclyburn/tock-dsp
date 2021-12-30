@@ -4,7 +4,6 @@ use kernel::dsp::engine::{self, DSPEngine, Resources};
 use kernel::dsp::link::{Chain, Link};
 use kernel::hil::dma::{SourcePeripheral, TargetPeripheral};
 use kernel::hil::time;
-use kernel::platform::sync::UnmanagedSpinlock;
 use kernel::sync::{Lockable, Mutex};
 
 use dsp::effects;
@@ -15,8 +14,8 @@ use rp2040::pio::{self, PIO, PIOBlock};
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::interrupt;
 
-struct ASPKResources<L: 'static + Lockable, F: 'static + time::Frequency, T: 'static + time::Ticks> {
-    engine: &'static DSPEngine<L, F, T>,
+struct ASPKResources<F: 'static + time::Frequency, T: 'static + time::Ticks> {
+    engine: &'static DSPEngine<F, T>,
     signal_chain: Chain,
 }
 
@@ -27,29 +26,27 @@ macro_rules! create_link {
     }}
 }
 
-unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKResources<UnmanagedSpinlock,
-                                                                                      time::Freq1MHz,
-                                                                                      time::Ticks32>
+unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKResources<time::Freq1MHz, time::Ticks32>
 {
     // Create statistics container.
     let mtx_stats = {
         use kernel::platform::KernelResources;
         use kernel::platform::sync::HardwareSyncAccess;
 
-        let spinlock: UnmanagedSpinlock = board_resources.hardware_sync()
+        let spinlock = board_resources.hardware_sync()
             .expect("no hardware sync configured")
-            .access(true, |hs| hs.get_spinlock().expect("no free spinlocks left"))
-            .expect("cannot access hardware sync")
-            .into();
+            .access(true, |hs| hs.get_lock().expect("no free spinlocks left"))
+            .expect("cannot access hardware sync");
 
         let stats = static_init!(engine::Statistics, engine::Statistics::default());
 
         Mutex::new(spinlock, stats)
     };
+    board_resources.dsp_stats.add_stats(mtx_stats.clone());
 
     ASPKResources {
         engine: static_init!(
-            DSPEngine<UnmanagedSpinlock, time::Freq1MHz, time::Ticks32>,
+            DSPEngine<time::Freq1MHz, time::Ticks32>,
             DSPEngine::new(mtx_stats, board_resources.timer)),
         signal_chain: Chain::new(&[
             create_link!(effects::NoOp, effects::NoOp::new()),

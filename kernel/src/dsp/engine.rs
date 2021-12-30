@@ -32,9 +32,9 @@ pub fn sampling_rate() -> usize { config::SAMPLING_RATE }
 ///
 /// This is the heart of the DSP.
 /// Start signal processing with [`DSPEngine::run()`].
-pub struct DSPEngine<L: Lockable, F: 'static + time::Frequency, T: 'static + time::Ticks> {
+pub struct DSPEngine<F: 'static + time::Frequency, T: 'static + time::Ticks> {
     /// Runtime statistics.
-    stats: Mutex<L, Statistics>,
+    stats: Mutex<Statistics>,
     /// Time provider.
     time: &'static dyn Time<Frequency = F, Ticks = T>,
     /// Buffers for incoming audio samples.
@@ -58,12 +58,12 @@ pub struct DSPEngine<L: Lockable, F: 'static + time::Frequency, T: 'static + tim
     t_playback_start: Cell<T>,
 }
 
-impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
+impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
     /// Create a new `DSPEngine` instance.
     pub unsafe fn new<'a>(
-        stats: Mutex<L, Statistics>,
+        stats: Mutex<Statistics>,
         time: &'static dyn time::Time<Frequency = F, Ticks = T>,
-    ) -> DSPEngine<L, F, T>
+    ) -> DSPEngine<F, T>
     {
         DSPEngine {
             stats,
@@ -315,7 +315,7 @@ impl<L: Lockable, F: time::Frequency, T: time::Ticks> DSPEngine<L, F, T> {
     }
 }
 
-impl<L: Lockable, F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngine<L, F, T> {
+impl<F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngine<F, T> {
     /// Restore incoming sample buffer and restart a transfer.
     ///
     /// The DSP engine receives this callback for completed transfers from the sample source and sink.

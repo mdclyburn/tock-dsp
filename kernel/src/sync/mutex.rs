@@ -57,15 +57,14 @@ impl<'a, T> Drop for MutexGuard<'a, T> {
 }
 
 /// Mutually exclusive access provider.
-#[derive(Copy, Clone)]
-pub struct Mutex<L: Lockable, T: 'static> {
-    lock: L,
+pub struct Mutex<T: 'static> {
+    lock: &'static dyn Lockable,
     resource: &'static T,
 }
 
-impl<L: Lockable, T> Mutex<L, T> {
+impl<T> Mutex<T> {
     /// Create a new Mutex.
-    pub fn new(lock: L, resource: &'static mut T) -> Mutex<L, T> {
+    pub fn new(lock: &'static dyn Lockable, resource: &'static mut T) -> Mutex<T> {
         Mutex {
             lock,
             resource,
@@ -79,7 +78,7 @@ impl<L: Lockable, T> Mutex<L, T> {
         if !self.lock.try_lock() {
             Err(ErrorCode::BUSY)
         } else {
-            Ok(MutexGuard::new(&self.lock, self.resource))
+            Ok(MutexGuard::new(self.lock, self.resource))
         }
     }
 
@@ -87,7 +86,7 @@ impl<L: Lockable, T> Mutex<L, T> {
     pub fn lock(&self) -> MutexGuard<'_, T> {
         while !self.lock.try_lock() {  }
 
-        MutexGuard::new(&self.lock, self.resource)
+        MutexGuard::new(self.lock, self.resource)
     }
 
     /// Attempt to gain access to the resource to run an operation.
@@ -108,5 +107,14 @@ impl<L: Lockable, T> Mutex<L, T> {
     {
         let guard = self.lock();
         guard.map(f)
+    }
+}
+
+impl<T> Clone for Mutex<T> {
+    fn clone(&self) -> Self {
+        Mutex {
+            lock: self.lock,
+            resource: self.resource,
+        }
     }
 }

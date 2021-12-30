@@ -82,10 +82,10 @@ pub struct RaspberryPiPico {
     #[allow(unused)] // DSP uses this
     adc: &'static rp2040::adc::Adc,
     // temperature: &'static capsules::temperature::TemperatureSensor<'static>,
-
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm0p::systick::SysTick,
     timer: &'static RPTimer<'static>,
+    dsp_stats: &'static capsules::dsp_stats::DSPStats,
 }
 
 impl SyscallDriverLookup for RaspberryPiPico {
@@ -409,12 +409,10 @@ pub unsafe fn main() {
         .finalize(());
 
     // Create the debugger object that handles calls to `debug!()`.
-    let debug_sl: &'static kernel::platform::sync::ManagedSpinlock =
-        static_init!(kernel::platform::sync::ManagedSpinlock,
-                     hw_sync_access.access(true, |hsb| hsb.get_spinlock()).unwrap().unwrap().into());
+    let debug_lock = hw_sync_access.access(true, |hsb| hsb.get_lock()).unwrap().unwrap();
     let sem_debug_write = static_init!(
         kernel::sync::Semaphore,
-        kernel::sync::Semaphore::new(debug_sl, 1));
+        kernel::sync::Semaphore::new(debug_lock, 1));
     kernel::debug::use_semaphore(sem_debug_write);
     components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
@@ -537,6 +535,10 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
         .finalize(components::rr_component_helper!(NUM_PROCS));
 
+    let dsp_stats = static_init!(
+        capsules::dsp_stats::DSPStats,
+        capsules::dsp_stats::DSPStats::new());
+
     let raspberry_pi_pico = RaspberryPiPico {
         ipc: kernel::ipc::IPC::new(
             board_kernel,
@@ -559,6 +561,7 @@ pub unsafe fn main() {
         scheduler,
         systick: cortexm0p::systick::SysTick::new_with_calibration(125_000_000),
         timer: &peripherals.timer,
+        dsp_stats,
     };
 
     /// These symbols are defined in the linker script.
