@@ -220,7 +220,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             // Scale (12- to 16-bit), translate the samples toward the baseline.
             // Perhaps dynamically learn what the baseline should be later.
             // TODO: this code should be wrapped up in the sample provider.
-            // let raw = proc_buf_a[1];
+            let raw = proc_buf_a[1];
             for (usample, isample) in uproc_buf_a.iter_mut().zip(sproc_buf_a.iter_mut()) {
                 // Scale the sample up to a 16-bit value.
                 // u12::MAX << 4 = 65,520 cannot exceed u16::MAX, so there's no worry about overflow.
@@ -235,7 +235,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             // self.stats.try_map(|stats| {
             //     debug!("ct: {}μs", stats.collect_process_us);
             // });
-            // debug!("s: {} → {}", (raw & 0b111111111111) << 4, sproc_buf_a[1]);
+            debug!("s: {} → {}", (raw & 0b111111111111) << 4, sproc_buf_a[1]);
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -392,7 +392,7 @@ impl<F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngine<F, T> {
 
 #[derive(Default)]
 pub struct Statistics {
-    collect_process_us: u32,
-    processing_loop_us: u32,
-    playback_time_us: u32,
+    pub collect_process_us: u32,
+    pub processing_loop_us: u32,
+    pub playback_time_us: u32,
 }

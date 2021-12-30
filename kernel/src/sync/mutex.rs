@@ -100,6 +100,15 @@ impl<T> Mutex<T> {
         self.try_lock().map(|guard| guard.map(f))
     }
 
+    /// Attempt to gain access to the resource ro run an operation or return a default value.
+    pub fn map_or<F, U>(&self, default: U, f: F) -> U
+    where
+        F: FnOnce(&mut T) -> U,
+    {
+        self.try_lock().map(|guard| guard.map(f))
+            .unwrap_or(default)
+    }
+
     /// Repeatedly attempt to access the resource, running an operation when successful.
     pub fn map<F, R>(&self, f: F) -> R
     where
