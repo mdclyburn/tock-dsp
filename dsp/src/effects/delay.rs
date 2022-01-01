@@ -29,6 +29,15 @@ impl Sweep {
 }
 
 /// Mix a signal with itself with a small, varying delay.
+///
+/// Captures a varying amount of previously-encountered samples and layers it with a later sample.
+/// The delay for flangers is typically very small,
+/// on the order of a few milliseconds.
+/// Thus, the maximum delay of this implementation is limited to the length of the sample buffer.
+///
+/// With a 44.1kHz sampling rate and 20ms sample size
+/// (each buffer is 882 samples)
+/// this processor takes 4.2 to 4.4 milliseconds to run.
 pub struct Flange {
     /// Progression of the moving offset.
     cycle: Cell<Sweep>,
