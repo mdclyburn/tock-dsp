@@ -49,7 +49,7 @@ unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKReso
             DSPEngine<time::Freq1MHz, time::Ticks32>,
             DSPEngine::new(mtx_stats, board_resources.timer)),
         signal_chain: Chain::new(&[
-            create_link!(effects::special::NoOp, effects::special::NoOp::new()),
+            // create_link!(effects::special::NoOp, effects::special::NoOp::new()),
             create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
         ]),
     }
@@ -143,25 +143,42 @@ right_ch_loop:
     .wrap
 ");
 
+    // Calculate clock divider.
+    //
+    // ===== EXAMPLE
+    // Desired frequency: 88.2kHz = 88,200Hz
+    //
+    // Calculating clock divider as follows...
+    // 32 bits to output a sample (16-bit samples)
+    //   * 2 cycles per sample (see the PIOASM)
+    //   * 88,200 samples to output per second
+    //   = 5,644,800Hz clock rate
+    //
+    // 125,000,000 system clock ticks (125MHz system clock)
+    //   / 5,644,800 PIO cycles necessary for operation
+    //   = 22.144274376 system clock ticks per PIO cycle
+    //
+    // Integer divider = 22
+    // Fractional divider (8-bit) = .144274376 * 256
+    //   = 36.934240256 ≅ 37
+    let (div_int, div_frac) = {
+        let req_bandwidth = 32 * 2 * engine::sampling_rate();
+        let clk_ticks_per = 125_000_000f32 / req_bandwidth as f32;
+
+        let frac = (clk_ticks_per - (clk_ticks_per as u32 as f32)) * 256f32;
+        let frac = if frac - (frac as u32 as f32) >= 0.5 {
+            frac + 1.0
+        } else {
+            frac
+        } as u8;
+
+        (clk_ticks_per as u16, frac)
+    };
+
     let parameters = {
     let default = pio::Parameters::default();
         pio::Parameters {
-            // Desired frequency: 88.2kHz = 88,200Hz
-            //
-            // Calculating clock divider as follows...
-            // 32 bits to output a sample (16-bit samples)
-            //   * 2 cycles per sample (see the PIOASM)
-            //   * 88,200 samples to output per second
-            //   = 5,644,800Hz clock rate
-            //
-            // 125,000,000 system clock ticks (125MHz system clock)
-            //   / 5,644,800 PIO cycles necessary for operation
-            //   = 22.144274376 system clock ticks per PIO cycle
-            //
-            // Integer divider = 22
-            // Fractional divider (8-bit) = .144274376 * 256
-            //   = 36.934240256 ≅ 37
-            clock_divider: (22, 37),
+            clock_divider: (div_int, div_frac),
             osr_direction: pio::ShiftDirection::Left,
             set_count: 1,
             out_count: 1,
