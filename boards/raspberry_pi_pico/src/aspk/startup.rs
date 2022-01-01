@@ -49,7 +49,7 @@ unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKReso
             DSPEngine<time::Freq1MHz, time::Ticks32>,
             DSPEngine::new(mtx_stats, board_resources.timer)),
         signal_chain: Chain::new(&[
-            create_link!(effects::NoOp, effects::NoOp::new()),
+            create_link!(effects::special::NoOp, effects::special::NoOp::new()),
         ]),
     }
 }
