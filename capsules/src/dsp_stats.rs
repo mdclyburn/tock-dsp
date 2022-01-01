@@ -40,6 +40,7 @@ impl SyscallDriver for DSPStats {
                     stats.map_or(CommandReturn::failure(ErrorCode::BUSY), |stats| {
                         match stat_no {
                             1 => CommandReturn::success_u32(stats.collect_process_us),
+                            2 => CommandReturn::success_u32(stats.processing_loop_us),
                             _ => CommandReturn::failure(ErrorCode::INVAL),
                         }
                     })
