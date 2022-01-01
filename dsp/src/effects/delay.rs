@@ -106,11 +106,11 @@ impl SignalProcessor for Flange {
                         // Increase the offset.
                         self.cycle.set(Sweep::Left(offset + self.stride));
                         // Insert the last sample repeated self.stride times to fillin the gaps.
-                        for idx in (0..self.stride) {
+                        for idx in 0..self.stride {
                             overflow[idx] = in_samples[overflow_src_idx-1];
                         }
                         // Copy remaining input samples to the overflow buffer.
-                        for (of_idx, in_idx) in (self.stride..).zip((overflow_src_idx..in_samples.len())) {
+                        for (of_idx, in_idx) in (self.stride..).zip(overflow_src_idx..in_samples.len()) {
                             overflow[of_idx] = in_samples[in_idx];
                         }
                     }
@@ -126,7 +126,7 @@ impl SignalProcessor for Flange {
                         // Copy remaining input to the overflow buffer.
                         // There are less samples to copy now.
                         // Use overflow_src_idx + self.stride to skip over some samples.
-                        for (of_idx, in_idx) in (0..).zip(((overflow_src_idx+self.stride)..in_samples.len())) {
+                        for (of_idx, in_idx) in (0..).zip((overflow_src_idx+self.stride)..in_samples.len()) {
                             overflow[of_idx] = in_samples[in_idx];
                         }
                     }
