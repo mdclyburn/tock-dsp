@@ -50,7 +50,7 @@ pub(crate) const CONFIG: Config = Config {
 };
 
 /// Number of Samples ASPK will collect in one second.
-pub(crate) const SAMPLING_RATE: usize = 44_100 * 2;
+pub(crate) const SAMPLING_RATE: usize = 44_100;
 /// How many milliseconds worth of samples ASPK will collect.
 pub(crate) const BUFFER_LEN_MS: usize = 20;
 /// Number of samples ASPK will collect to fulfill both `SAMPLING_RATE` and `BUFFER_LEN_MS`.
