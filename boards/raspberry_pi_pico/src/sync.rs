@@ -54,6 +54,7 @@ impl SIOSpinlock {
         sio.release_spinlock(self.spinlock_no());
     }
 
+    #[allow(dead_code)]
     fn free(&self) {
         // Call to free() implies SIOSpinlock was previously created by HardwareSyncBlock,
         // which implies that HardwareSyncBlock was previously created by HardwareSyncBlockAccess,
@@ -128,6 +129,7 @@ impl HardwareSyncBlock {
     }
 
     /// Make a spinlock available for allocation.
+    #[allow(dead_code)]
     fn deallocate(&self, lock_no: u8) {
         let new_state = self.allocation_state.get() ^ (1 << lock_no);
         self.allocation_state.set(new_state);

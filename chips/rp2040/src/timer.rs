@@ -5,7 +5,7 @@ use cortexm0p::support::atomic;
 use kernel::hil;
 use kernel::hil::time::{Ticks, Ticks32, Time};
 use kernel::utilities::cells::OptionalCell;
-use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
+use kernel::utilities::registers::interfaces::{Readable, Writeable};
 use kernel::utilities::registers::{
     register_bitfields, register_structs, ReadOnly, ReadWrite, WriteOnly,
 };

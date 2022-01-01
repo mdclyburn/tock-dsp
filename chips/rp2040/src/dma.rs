@@ -454,7 +454,6 @@ impl DMA {
                 // Translate a peripheral source to an RP2040 DMA TREQ signal source.
                 let treq_signal = {
                     use hil::dma::TransferKind;
-                    use hil::dma::SourcePeripheral;
 
                     match options.kind {
                         TransferKind::PeripheralToMemory(srcp, _wa) =>

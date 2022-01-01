@@ -1,9 +1,6 @@
 //! Audio sample buffer management.
 
-use core::mem::MaybeUninit;
-
 use crate::config;
-use crate::static_buf;
 use crate::utilities::cells::{TakeCell, VolatileCell};
 
 /// Current status of samples in an [`SampleContainer`].

@@ -1,10 +1,10 @@
 use kernel::static_init;
 use kernel::Kernel;
-use kernel::dsp::engine::{self, DSPEngine, Resources};
+use kernel::dsp::engine::{self, DSPEngine};
 use kernel::dsp::link::{Chain, Link};
 use kernel::hil::dma::{SourcePeripheral, TargetPeripheral};
 use kernel::hil::time;
-use kernel::sync::{Lockable, Mutex};
+use kernel::sync::Mutex;
 
 use dsp::effects;
 use rp2040;
@@ -77,7 +77,7 @@ pub unsafe fn launch() -> ! {
 
     // The first three words from the other side are the kernel, board, and chip resources.
     let sio = SIO::new();
-    let (kernel, board_resources, chip_resources) = receive_resources(&sio);
+    let (_kernel, board_resources, chip_resources) = receive_resources(&sio);
 
     let alarm = board_resources.timer.allocate_alarm().unwrap();
 

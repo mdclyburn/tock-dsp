@@ -3,7 +3,7 @@
 use kernel::dsp::engine::Statistics;
 use kernel::errorcode::ErrorCode;
 use kernel::process::ProcessId;
-use kernel::sync::{Lockable, Mutex};
+use kernel::sync::Mutex;
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::MapCell;
 

@@ -1,6 +1,6 @@
 //! Mutex synchronization primitive.
 
-use core::ops::{Deref, DerefMut};
+use core::ops::Deref;
 
 use crate::errorcode::ErrorCode;
 

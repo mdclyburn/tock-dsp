@@ -3,13 +3,10 @@
 use core::cell::Cell;
 use core::default::Default;
 
-use cortexm0p::nvic::Nvic;
-
 use kernel::errorcode::ErrorCode;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{
     ReadWriteable,
-    Readable,
     Writeable
 };
 use kernel::utilities::registers::{
@@ -424,7 +421,7 @@ const ENC_INSTR_SET: u16 = 0b111_00000_000_00000;
 /// PIO peripheral instance.
 pub struct PIOBlock {
     registers: StaticRef<PIORegisters>,
-    client: OptionalCell<&'static dyn PIOBlockClient>,
+    _client: OptionalCell<&'static dyn PIOBlockClient>,
 }
 
 impl PIOBlock {
@@ -521,7 +518,7 @@ impl PIOBlock {
                 self.registers.sm_ctrl[sm_no].instr.set(set_pindirs_instr as u32);
 
                 // Start the state machine.
-                enabled_machines |= (1 << 3);
+                enabled_machines |= 1 << 3;
             }
         }
 
@@ -554,7 +551,7 @@ impl PIOBlock {
     }
 
     /// Interrupt handler for a specific PIO block.
-    fn handle_interrupt(&self, irq_line: InterruptLine) {
+    fn handle_interrupt(&self, _irq_line: InterruptLine) {
         unimplemented!()
     }
 }
@@ -573,11 +570,11 @@ impl PIO {
             pio_blocks: [
                 PIOBlock {
                     registers: PIO0,
-                    client: OptionalCell::empty(),
+                    _client: OptionalCell::empty(),
                 },
                 PIOBlock {
                     registers: PIO1,
-                    client: OptionalCell::empty(),
+                    _client: OptionalCell::empty(),
                 }
             ],
         }

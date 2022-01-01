@@ -2,8 +2,6 @@
 //!
 //! Interfaces providing access to hardware that makes synchronization possible.
 
-use core::ops::{Deref, Drop};
-
 use crate::errorcode::ErrorCode;
 use crate::sync::Lockable;
 

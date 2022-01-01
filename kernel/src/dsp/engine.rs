@@ -2,7 +2,6 @@
 
 use core::cell::Cell;
 use core::iter::{Cycle, Iterator, Peekable};
-use core::mem;
 use core::slice::{self, Iter as SliceIter};
 
 use crate::config;
@@ -12,9 +11,8 @@ use crate::dsp::link::Chain;
 use crate::errorcode::ErrorCode;
 use crate::hil::dma::{self, DMA, DMAChannel};
 use crate::hil::time::{self, Time, ConvertTicks};
-use crate::platform::KernelResources;
 use crate::platform::chip::Chip;
-use crate::sync::{Lockable, Mutex};
+use crate::sync::Mutex;
 use crate::utilities::cells::MapCell;
 
 pub struct Resources<'a, C: Chip> {
@@ -61,7 +59,7 @@ pub struct DSPEngine<F: 'static + time::Frequency, T: 'static + time::Ticks> {
     /// Time the last sample collection began.
     t_collect_start: Cell<T>,
     /// Time the last playback started.
-    t_playback_start: Cell<T>,
+    _t_playback_start: Cell<T>,
 }
 
 impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
@@ -86,7 +84,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             out_container_iter: MapCell::empty(),
             playback_stalled: Cell::new(true),
             t_collect_start: Cell::new(time.ticks_from_ms(0)),
-            t_playback_start: Cell::new(time.ticks_from_ms(0)),
+            _t_playback_start: Cell::new(time.ticks_from_ms(0)),
         }
     }
 
@@ -216,7 +214,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             // This means that we end up double-aliasing the buffers here.
             // We continue to keep both representations around because
             // the links get the signed numbers, and the usize buffer is what we .put() back.
-            let (sproc_buf_a, sproc_buf_b, uproc_buf_a, uproc_buf_b) = unsafe {
+            let (sproc_buf_a, sproc_buf_b, uproc_buf_a, _uproc_buf_b) = unsafe {
                 (slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut i16, config::NO_BUFFER_ENTRIES * 2),
                  slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut i16, config::NO_BUFFER_ENTRIES * 2),
                  slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES * 2),
@@ -226,7 +224,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             // Scale (12- to 16-bit), translate the samples toward the baseline.
             // Perhaps dynamically learn what the baseline should be later.
             // TODO: this code should be wrapped up in the sample provider.
-            let raw = proc_buf_a[1];
+            // let raw = proc_buf_a[1];
             for (usample, isample) in uproc_buf_a.iter_mut().zip(sproc_buf_a.iter_mut()) {
                 // Scale the sample up to a 16-bit value.
                 // u12::MAX << 4 = 65,520 cannot exceed u16::MAX, so there's no worry about overflow.
@@ -277,7 +275,9 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
                         let other_buf = output_buffer.take(BufferState::Playing)
                             // We previously just put this buffer back. If it's gone, sink DMA has run awry and taken it.
                             .unwrap();
-                        sink_dma_channel.start(other_buf);
+                        sink_dma_channel.start(other_buf)
+                            // Starting DMA must succeed.
+                            .unwrap();
                     }
                 });
             }
@@ -312,6 +312,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
     }
 
     /// Print sample buffer state.
+    #[allow(dead_code)]
     fn print_state(&self) {
         for buffer in self.in_containers.iter() {
             debug!("({:#010X}) {:?}", buffer as *const _ as usize, buffer.state());
