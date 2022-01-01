@@ -50,6 +50,7 @@ unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKReso
             DSPEngine::new(mtx_stats, board_resources.timer)),
         signal_chain: Chain::new(&[
             create_link!(effects::special::NoOp, effects::special::NoOp::new()),
+            create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
         ]),
     }
 }

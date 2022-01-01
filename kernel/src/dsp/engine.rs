@@ -26,7 +26,13 @@ pub struct Resources<'a, C: Chip> {
 type CyclicContainerIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
 
 /// Returns the sampling rate of the engine.
-pub fn sampling_rate() -> usize { config::SAMPLING_RATE }
+pub const fn sampling_rate() -> usize { config::SAMPLING_RATE }
+
+/// Number of samples in each sample buffer.
+pub const fn buffer_len_samples() -> usize { config::NO_SAMPLES }
+
+/// Length of time each buffer has samples for, in milliseconds.
+pub const fn buffer_len_ms() -> usize { config::BUFFER_LEN_MS }
 
 /// Orchestrator of the digital signal processing cycle.
 ///
@@ -235,7 +241,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             // self.stats.try_map(|stats| {
             //     debug!("ct: {}μs", stats.collect_process_us);
             // });
-            debug!("s: {} → {}", (raw & 0b111111111111) << 4, sproc_buf_a[1]);
+            // debug!("s: {} → {}", (raw & 0b111111111111) << 4, sproc_buf_a[1]);
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.
@@ -281,6 +287,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
                 let now = self.time.now();
                 stats.processing_loop_us = self.time.ticks_to_us(
                     now.wrapping_sub(t_processing_loop_start));
+                // debug!("t: {}μs", stats.processing_loop_us);
             });
         }
     }

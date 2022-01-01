@@ -5,4 +5,5 @@ Effects are further organized loosely by their function.
  */
 
 pub mod amplitude;
+pub mod delay;
 pub mod special;
