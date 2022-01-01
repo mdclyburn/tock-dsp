@@ -88,6 +88,9 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
         }
     }
 
+    // Max amount of time the processing loop may take to complete an iteration.
+    pub const PROCESSING_DURATION_MAX_US: usize = buffer_len_ms() * 1_000;
+
     /// Run the digital signal processing loop.
     ///
     /// Performs initial configuration and starts the DSP loop.
@@ -263,8 +266,6 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
                         proc_buf_b
                     };
                     output_buffer.put(other_buf, BufferState::Ready);
-                    // Disable playback and mark buffer as free.
-                    // output_buffer.put(other_buf, BufferState::Free);
                 });
             }
 
@@ -283,12 +284,22 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             }
 
             // End timing the processing loop.
-            let _ = self.stats.try_map(|stats| {
-                let now = self.time.now();
-                stats.processing_loop_us = self.time.ticks_to_us(
-                    now.wrapping_sub(t_processing_loop_start));
-                // debug!("t: {}μs", stats.processing_loop_us);
-            });
+            // Enforce a maximum processing time of the length of a sample buffer.
+            // If processing time exceeds this latency, then playback becomes non-contiguous.
+            let now = self.time.now();
+            let loop_time_us = self.time.ticks_to_us(
+                now.wrapping_sub(t_processing_loop_start));
+            if loop_time_us as usize > Self::PROCESSING_DURATION_MAX_US {
+                panic!("DSP engine loop time exceeded {}μs time limit: {}μs.",
+                       Self::PROCESSING_DURATION_MAX_US,
+                       loop_time_us);
+            } else {
+                // Update loop timing stat if it is available.
+                let _ = self.stats.try_map(|stats| {
+                    stats.processing_loop_us = loop_time_us
+                    // debug!("t: {}μs", stats.processing_loop_us);
+                });
+            }
         }
     }
 
