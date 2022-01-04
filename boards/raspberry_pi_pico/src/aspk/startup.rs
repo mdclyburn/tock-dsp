@@ -67,6 +67,7 @@ pub unsafe fn launch() -> ! {
     // This causes the ROE flag to always go high if the FIFO was empty.
     // Clear this error here so we do not have an interrupt pending.
     asm!(
+        "push {{r0, r1}}",
         "movs r1, 0b1000",
         "ldr r0, =0xd0000050", // 0xd0000050 = &SIO_FIFO_ST
         "str r1, [r0]",
