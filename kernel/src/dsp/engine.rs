@@ -15,9 +15,19 @@ use crate::platform::chip::Chip;
 use crate::sync::Mutex;
 use crate::utilities::cells::MapCell;
 
-pub struct Resources<'a, C: Chip> {
-    pub chip: &'a C,
-    pub dma: &'static dyn DMA,
+/// Controller for the signal processing source and sink.
+pub trait ProcessControl {
+    /// Returns the DMA channel that transfers samples from the sample source.
+    fn source_dma_channel(&self) -> &'static dyn DMAChannel;
+
+    /// Returns the DMA channel that transfers samples to the sample sink.
+    fn sink_dma_channel(&self) -> &'static dyn DMAChannel;
+
+    /// Start the sample sourcing and sinking processes.
+    fn start(&self) -> Result<(), ErrorCode>;
+
+    /// Stop the sample sourcing and sinking processes.
+    fn stop(&self) -> Result<(), ErrorCode>;
 }
 
 /// Iterator to cycle over buffer containers endlessly.
@@ -58,8 +68,6 @@ pub struct DSPEngine<F: 'static + time::Frequency, T: 'static + time::Ticks> {
 
     /// Time the last sample collection began.
     t_collect_start: Cell<T>,
-    /// Time the last playback started.
-    _t_playback_start: Cell<T>,
 }
 
 impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
@@ -84,7 +92,6 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             out_container_iter: MapCell::empty(),
             playback_stalled: Cell::new(true),
             t_collect_start: Cell::new(time.ticks_from_ms(0)),
-            _t_playback_start: Cell::new(time.ticks_from_ms(0)),
         }
     }
 
@@ -99,44 +106,18 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
     /// DMA, for sample processing and output.
     pub fn run<'a, C: Chip>(
         &'static self,
-        resources: &Resources<'a, C>,
+        chip: &C,
         chain: &Chain,
-        source: dma::SourcePeripheral,
-        sink: dma::TargetPeripheral,
+        control: &dyn ProcessControl,
     ) -> !
     {
-
         // Configure sample input DMA.
-        let source_dma_channel = {
-            let params = dma::Parameters {
-                kind: dma::TransferKind::PeripheralToMemory(source, 0),
-                transfer_count: config::NO_SAMPLES,
-                transfer_size: dma::TransferSize::HalfWord,
-                increment_on_read: false,
-                increment_on_write: true,
-                high_priority: true,
-            };
-            resources.dma.configure(&params)
-                .unwrap()
-        };
-        source_dma_channel.set_client(self);
-        self.source_dma_channel_no.set(source_dma_channel.channel_no() as u8);
+        control.source_dma_channel().set_client(self);
+        self.source_dma_channel_no.set(control.source_dma_channel().channel_no() as u8);
 
         // Configure sample output DMA.
-        let sink_dma_channel = {
-            let params = dma::Parameters {
-                kind: dma::TransferKind::MemoryToPeripheral(0, sink),
-                transfer_count: config::NO_SAMPLES,
-                transfer_size: dma::TransferSize::HalfWord,
-                increment_on_read: true,
-                increment_on_write: false,
-                high_priority: true,
-            };
-            resources.dma.configure(&params)
-                .unwrap()
-        };
-        sink_dma_channel.set_client(self);
-        self.sink_dma_channel_no.set(sink_dma_channel.channel_no() as u8);
+        control.sink_dma_channel().set_client(self);
+        self.sink_dma_channel_no.set(control.sink_dma_channel().channel_no() as u8);
 
         // Create cyclic iterators over the audio buffers.
         let mut process_in_buffer_it = self.in_containers.iter().cycle();
@@ -146,7 +127,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
         self.out_container_iter.put(out_buffer_it);
 
         // Start sample collection.
-        self.initiate_sampling(source_dma_channel)
+        self.initiate_sampling(control.source_dma_channel())
             // Initiating sampling should not fail.
             .unwrap();
 
@@ -171,7 +152,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
 
                 while in_buffer.is_none() {
                     in_buffer = unsafe {
-                        resources.chip.atomic(|| {
+                        chip.atomic(|| {
                             if input_buffer.state() == BufferState::Unprocessed {
                                 let buffer = input_buffer.take(BufferState::Processing)
                                     // Unprocessed buffers must be in the container.
@@ -186,7 +167,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
 
                 while out_buffer.is_none() {
                     out_buffer = unsafe {
-                        resources.chip.atomic(|| {
+                        chip.atomic(|| {
                             if output_buffer.state() == BufferState::Free {
                                 let buffer = output_buffer.take(BufferState::Processing)
                                     // Free buffers must be in the container.
@@ -257,7 +238,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             // Replace the buffers.
             // The output buffer needs to go to BufferState::Ready when we implement playing processed samples.
             unsafe {
-                resources.chip.atomic(|| {
+                chip.atomic(|| {
                     let other_buf = if exchange_buffers_after_processing {
                         input_buffer.put(proc_buf_b, BufferState::Free);
                         proc_buf_a
@@ -270,13 +251,13 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             }
 
             unsafe {
-                resources.chip.atomic(|| {
+                chip.atomic(|| {
                     if self.playback_stalled.get() {
                         self.playback_stalled.set(false);
                         let other_buf = output_buffer.take(BufferState::Playing)
                             // We previously just put this buffer back. If it's gone, sink DMA has run awry and taken it.
                             .unwrap();
-                        sink_dma_channel.start(other_buf)
+                        control.sink_dma_channel().start(other_buf)
                             // Starting DMA must succeed.
                             .unwrap();
                     }

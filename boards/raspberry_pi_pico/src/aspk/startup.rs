@@ -1,7 +1,9 @@
 use kernel::static_init;
 use kernel::Kernel;
-use kernel::dsp::engine::{self, DSPEngine};
+use kernel::dsp::engine::{self, DSPEngine, ProcessControl};
 use kernel::dsp::link::{Chain, Link};
+use kernel::errorcode::ErrorCode;
+use kernel::hil;
 use kernel::hil::dma::{SourcePeripheral, TargetPeripheral};
 use kernel::hil::time;
 use kernel::sync::Mutex;
@@ -14,9 +16,30 @@ use rp2040::pio::{self, PIO, PIOBlock};
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::interrupt;
 
-struct ASPKResources<F: 'static + time::Frequency, T: 'static + time::Ticks> {
-    engine: &'static DSPEngine<F, T>,
-    signal_chain: Chain,
+/// DSP implemented with an ADC channel and a PIO block implementing I²S.
+struct ADCToI2S {
+    adc: &'static rp2040::adc::Adc,
+    adc_dma: &'static dyn hil::dma::DMAChannel,
+    i2s_pio: &'static rp2040::pio::PIOBlock,
+    i2s_pio_dma: &'static dyn hil::dma::DMAChannel,
+}
+
+impl ProcessControl for ADCToI2S {
+    fn source_dma_channel(&self) -> &'static dyn hil::dma::DMAChannel {
+        self.adc_dma
+    }
+
+    fn sink_dma_channel(&self) -> &'static dyn hil::dma::DMAChannel {
+        self.i2s_pio_dma
+    }
+
+    fn start(&self) -> Result<(), ErrorCode> {
+        Err(ErrorCode::NOSUPPORT)
+    }
+
+    fn stop(&self) -> Result<(), ErrorCode> {
+        Err(ErrorCode::NOSUPPORT)
+    }
 }
 
 macro_rules! create_link {
@@ -24,35 +47,6 @@ macro_rules! create_link {
         let effect = kernel::static_init!($effect_type, $init);
         kernel::static_init!(Link, Link::new(effect))
     }}
-}
-
-unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKResources<time::Freq1MHz, time::Ticks32>
-{
-    // Create statistics container.
-    let mtx_stats = {
-        use kernel::platform::KernelResources;
-        use kernel::platform::sync::HardwareSyncAccess;
-
-        let spinlock = board_resources.hardware_sync()
-            .expect("no hardware sync configured")
-            .access(true, |hs| hs.get_lock().expect("no free spinlocks left"))
-            .expect("cannot access hardware sync");
-
-        let stats = static_init!(engine::Statistics, engine::Statistics::default());
-
-        Mutex::new(spinlock, stats)
-    };
-    board_resources.dsp.add_stats(mtx_stats.clone());
-
-    ASPKResources {
-        engine: static_init!(
-            DSPEngine<time::Freq1MHz, time::Ticks32>,
-            DSPEngine::new(mtx_stats, board_resources.timer)),
-        signal_chain: Chain::new(&[
-            // create_link!(effects::special::NoOp, effects::special::NoOp::new()),
-            create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
-        ]),
-    }
 }
 
 /// Start ASPK.
@@ -85,22 +79,71 @@ pub unsafe fn launch() -> ! {
     // Complete interrupt configuration.
     interrupt::configure(board_resources, alarm);
 
-    let aspk = allocate_aspk_resources(&board_resources);
+    // Create statistics container.
+    let mtx_stats = {
+        use kernel::platform::KernelResources;
+        use kernel::platform::sync::HardwareSyncAccess;
 
-    let _i2s = configure_pio(board_resources.pio);
+        let spinlock = board_resources.hardware_sync()
+            .expect("no hardware sync configured")
+            .access(true, |hs| hs.get_lock().expect("no free spinlocks left"))
+            .expect("cannot access hardware sync");
 
+        let stats = static_init!(engine::Statistics, engine::Statistics::default());
+
+        Mutex::new(spinlock, stats)
+    };
+    board_resources.dsp.add_stats(mtx_stats.clone());
+
+    // DSP engine
+    let engine = static_init!(
+        DSPEngine<time::Freq1MHz, time::Ticks32>,
+        DSPEngine::new(mtx_stats, board_resources.timer));
+
+    // Signal chain
+    let signal_chain = Chain::new(&[
+        // create_link!(effects::special::NoOp, effects::special::NoOp::new()),
+        create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
+    ]);
+
+    // Set up DSP source and sink backing producer and consumers.
+    // - ADC set for continuous sampling.
+    // - I²S implemented on top of PIO.
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,
         engine::sampling_rate() as u32);
+    let i2s_pio = configure_pio(board_resources.pio);
 
-    aspk.engine.run(
-        &engine::Resources {
-            chip: chip_resources,
-            dma: board_resources.dma,
-        },
-        &aspk.signal_chain,
-        SourcePeripheral::ADC,
-        TargetPeripheral::Custom(0));
+    let dsp_process_ctrl = {
+        let source_channel = board_resources.dma.configure(&hil::dma::Parameters {
+            kind: hil::dma::TransferKind::PeripheralToMemory(hil::dma::SourcePeripheral::ADC, 0),
+            transfer_count: engine::buffer_len_samples(),
+            transfer_size: hil::dma::TransferSize::HalfWord,
+            increment_on_read: false,
+            increment_on_write: true,
+            high_priority: true,
+        }).unwrap();
+        let sink_channel = board_resources.dma.configure(&hil::dma::Parameters {
+            kind: hil::dma::TransferKind::MemoryToPeripheral(0, hil::dma::TargetPeripheral::Custom(0)),
+            transfer_count: engine::buffer_len_samples(),
+            transfer_size: hil::dma::TransferSize::HalfWord,
+            increment_on_read: true,
+            increment_on_write: false,
+            high_priority: true,
+        }).unwrap();
+
+        ADCToI2S {
+            adc: board_resources.adc,
+            adc_dma: source_channel,
+            i2s_pio: i2s_pio,
+            i2s_pio_dma: sink_channel,
+        }
+    };
+
+    engine.run(
+        chip_resources,
+        &signal_chain,
+        &dsp_process_ctrl);
 }
 
 #[inline(never)]
