@@ -296,7 +296,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             } else {
                 // Update loop timing stat if it is available.
                 let _ = self.stats.try_map(|stats| {
-                    stats.processing_loop_us = loop_time_us
+                    stats.processing_loop_us = loop_time_us;
                     // debug!("t: {}μs", stats.processing_loop_us);
                 });
             }

@@ -7,6 +7,8 @@ use kernel::sync::Mutex;
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::MapCell;
 
+pub const DRIVER_NUM: usize = crate::driver::NUM::DSPControl as usize;
+
 pub struct DSPStats {
     stats: MapCell<Mutex<Statistics>>,
 }

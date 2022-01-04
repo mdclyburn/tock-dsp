@@ -101,6 +101,8 @@ impl SyscallDriverLookup for RaspberryPiPico {
             kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             // capsules::adc::DRIVER_NUM => f(Some(self.adc)),
             // capsules::temperature::DRIVER_NUM => f(Some(self.temperature)),
+            capsules::dsp_stats::DRIVER_NUM => f(Some(self.dsp_stats)),
+
             _ => f(None),
         }
     }
