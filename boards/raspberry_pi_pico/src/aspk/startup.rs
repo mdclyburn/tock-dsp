@@ -42,7 +42,7 @@ unsafe fn allocate_aspk_resources(board_resources: &RaspberryPiPico) -> ASPKReso
 
         Mutex::new(spinlock, stats)
     };
-    board_resources.dsp_stats.add_stats(mtx_stats.clone());
+    board_resources.dsp.add_stats(mtx_stats.clone());
 
     ASPKResources {
         engine: static_init!(

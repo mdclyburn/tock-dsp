@@ -85,7 +85,7 @@ pub struct RaspberryPiPico {
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm0p::systick::SysTick,
     timer: &'static RPTimer<'static>,
-    dsp_stats: &'static capsules::dsp_stats::DSPStats,
+    dsp: &'static capsules::dsp::DSPControl,
 }
 
 impl SyscallDriverLookup for RaspberryPiPico {
@@ -101,7 +101,7 @@ impl SyscallDriverLookup for RaspberryPiPico {
             kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             // capsules::adc::DRIVER_NUM => f(Some(self.adc)),
             // capsules::temperature::DRIVER_NUM => f(Some(self.temperature)),
-            capsules::dsp_stats::DRIVER_NUM => f(Some(self.dsp_stats)),
+            capsules::dsp::DRIVER_NUM => f(Some(self.dsp)),
 
             _ => f(None),
         }
@@ -537,9 +537,9 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
         .finalize(components::rr_component_helper!(NUM_PROCS));
 
-    let dsp_stats = static_init!(
-        capsules::dsp_stats::DSPStats,
-        capsules::dsp_stats::DSPStats::new());
+    let dsp = static_init!(
+        capsules::dsp::DSPControl,
+        capsules::dsp::DSPControl::new());
 
     let raspberry_pi_pico = RaspberryPiPico {
         ipc: kernel::ipc::IPC::new(
@@ -563,7 +563,7 @@ pub unsafe fn main() {
         scheduler,
         systick: cortexm0p::systick::SysTick::new_with_calibration(125_000_000),
         timer: &peripherals.timer,
-        dsp_stats,
+        dsp,
     };
 
     /// These symbols are defined in the linker script.

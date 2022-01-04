@@ -1,4 +1,4 @@
-//! DSP stats access interface.
+//! Digital signal processing control interface.
 
 use kernel::dsp::engine::Statistics;
 use kernel::errorcode::ErrorCode;
@@ -9,13 +9,13 @@ use kernel::utilities::cells::MapCell;
 
 pub const DRIVER_NUM: usize = crate::driver::NUM::DSPControl as usize;
 
-pub struct DSPStats {
+pub struct DSPControl {
     stats: MapCell<Mutex<Statistics>>,
 }
 
-impl DSPStats {
-    pub fn new() -> DSPStats {
-        DSPStats {
+impl DSPControl {
+    pub fn new() -> DSPControl {
+        DSPControl {
             stats: MapCell::empty(),
         }
     }
@@ -25,7 +25,7 @@ impl DSPStats {
     }
 }
 
-impl SyscallDriver for DSPStats {
+impl SyscallDriver for DSPControl {
     fn allocate_grant(&self, _pid: ProcessId) -> Result<(), kernel::process::Error> { Ok(()) }
 
     fn command(&self, no: usize, r2: usize, r3: usize, _pid: ProcessId) -> CommandReturn {
