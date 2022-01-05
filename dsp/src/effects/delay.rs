@@ -3,9 +3,10 @@
 
 use core::cell::Cell;
 
-use kernel::dsp::engine;
-use kernel::dsp::link::SignalProcessor;
-use kernel::utilities::cells::MapCell;
+use tock_cells::map_cell::MapCell;
+
+use crate::config;
+use crate::signal::SignalProcessor;
 
 /// Moving window state.
 #[derive(Clone, Copy)]
@@ -46,7 +47,7 @@ pub struct Flange {
     /// Max number of samples to displace the source by.
     max_offset: usize,
     /// Samples held over from the previous processing cycle.
-    overflow: MapCell<[i16; engine::buffer_len_samples()]>,
+    overflow: MapCell<[i16; config::buffer_len_samples()]>,
 }
 
 impl Flange {
@@ -57,17 +58,17 @@ impl Flange {
     /// This cycle will happen over about `cycle_len_ms` milliseconds.
     pub fn new(max_offset_us: usize, cycle_len_ms: usize) -> Flange {
         let max_offset =
-            engine::sampling_rate()
+            config::sampling_rate()
             * max_offset_us / 1_000_000;
         let stride =
-            engine::buffer_len_samples() * 2 // Samples in one cycle.
-            / (cycle_len_ms / engine::buffer_len_ms()); // No. of times process() executes in cycle_len_ms.
+            config::buffer_len_samples() * 2 // Samples in one cycle.
+            / (cycle_len_ms / config::buffer_len_ms()); // No. of times process() executes in cycle_len_ms.
 
         Flange {
             cycle: Cell::new(Sweep::Left(0)),
             stride,
             max_offset,
-            overflow: MapCell::new([0; engine::buffer_len_samples()]),
+            overflow: MapCell::new([0; config::buffer_len_samples()]),
         }
     }
 

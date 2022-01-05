@@ -4,12 +4,14 @@ use core::cell::Cell;
 use core::iter::{Cycle, Iterator, Peekable};
 use core::slice::{self, Iter as SliceIter};
 
+use dsp;
+use dsp::signal::Chain;
+
 use crate::config;
 use crate::{debug, static_buf};
 use crate::dsp::buffer::{SampleContainer, BufferState};
-use crate::dsp::link::Chain;
 use crate::errorcode::ErrorCode;
-use crate::hil::dma::{self, DMA, DMAChannel};
+use crate::hil::dma::{self, DMAChannel};
 use crate::hil::time::{self, Time, ConvertTicks};
 use crate::platform::chip::Chip;
 use crate::sync::Mutex;
@@ -32,15 +34,6 @@ pub trait ProcessControl {
 
 /// Iterator to cycle over buffer containers endlessly.
 type CyclicContainerIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
-
-/// Returns the sampling rate of the engine.
-pub const fn sampling_rate() -> usize { config::SAMPLING_RATE }
-
-/// Number of samples in each sample buffer.
-pub const fn buffer_len_samples() -> usize { config::NO_SAMPLES }
-
-/// Length of time each buffer has samples for, in milliseconds.
-pub const fn buffer_len_ms() -> usize { config::BUFFER_LEN_MS }
 
 /// Orchestrator of the digital signal processing cycle.
 ///
@@ -96,7 +89,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
     }
 
     // Max amount of time the processing loop may take to complete an iteration.
-    pub const PROCESSING_DURATION_MAX_US: usize = buffer_len_ms() * 1_000;
+    pub const PROCESSING_DURATION_MAX_US: usize = dsp::config::buffer_len_ms() * 1_000;
 
     /// Run the digital signal processing loop.
     ///

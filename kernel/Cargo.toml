@@ -5,6 +5,7 @@ authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 edition = "2018"
 
 [dependencies]
+dsp = { path = "../dsp" }
 tock-registers = { path = "../libraries/tock-register-interface" }
 tock-cells = { path = "../libraries/tock-cells" }
 tock-tbf = { path = "../libraries/tock-tbf" }

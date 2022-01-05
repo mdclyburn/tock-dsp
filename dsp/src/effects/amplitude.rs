@@ -1,7 +1,7 @@
 /*! Processors for managing signal amplitude, affecting output volume.
  */
 
-use kernel::dsp::link::SignalProcessor;
+use crate::signal::SignalProcessor;
 
 /// Scale samples by a constant factor.
 ///

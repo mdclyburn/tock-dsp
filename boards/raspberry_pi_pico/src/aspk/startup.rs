@@ -1,13 +1,12 @@
 use kernel::static_init;
 use kernel::Kernel;
 use kernel::dsp::engine::{self, DSPEngine, ProcessControl};
-use kernel::dsp::link::{Chain, Link};
 use kernel::errorcode::ErrorCode;
 use kernel::hil;
-use kernel::hil::dma::{SourcePeripheral, TargetPeripheral};
 use kernel::hil::time;
 use kernel::sync::Mutex;
 
+use dsp::signal::{Chain, Link};
 use dsp::effects;
 use rp2040;
 use rp2040::gpio::SIO;
@@ -111,13 +110,13 @@ pub unsafe fn launch() -> ! {
     // - I²S implemented on top of PIO.
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,
-        engine::sampling_rate() as u32);
+        dsp::config::sampling_rate() as u32);
     let i2s_pio = configure_pio(board_resources.pio);
 
     let dsp_process_ctrl = {
         let source_channel = board_resources.dma.configure(&hil::dma::Parameters {
             kind: hil::dma::TransferKind::PeripheralToMemory(hil::dma::SourcePeripheral::ADC, 0),
-            transfer_count: engine::buffer_len_samples(),
+            transfer_count: dsp::config::buffer_len_samples(),
             transfer_size: hil::dma::TransferSize::HalfWord,
             increment_on_read: false,
             increment_on_write: true,
@@ -125,7 +124,7 @@ pub unsafe fn launch() -> ! {
         }).unwrap();
         let sink_channel = board_resources.dma.configure(&hil::dma::Parameters {
             kind: hil::dma::TransferKind::MemoryToPeripheral(0, hil::dma::TargetPeripheral::Custom(0)),
-            transfer_count: engine::buffer_len_samples(),
+            transfer_count: dsp::config::buffer_len_samples(),
             transfer_size: hil::dma::TransferSize::HalfWord,
             increment_on_read: true,
             increment_on_write: false,
@@ -206,7 +205,7 @@ right_ch_loop:
     // Fractional divider (8-bit) = .144274376 * 256
     //   = 36.934240256 ≅ 37
     let (div_int, div_frac) = {
-        let req_bandwidth = 32 * 2 * engine::sampling_rate();
+        let req_bandwidth = 32 * 2 * dsp::config::sampling_rate();
         let clk_ticks_per = 125_000_000f32 / req_bandwidth as f32;
 
         let frac = (clk_ticks_per - (clk_ticks_per as u32 as f32)) * 256f32;

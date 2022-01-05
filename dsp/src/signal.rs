@@ -2,7 +2,7 @@
 
 use core::iter::{IntoIterator, Iterator};
 
-use crate::utilities::cells::OptionalCell;
+use tock_cells::optional_cell::OptionalCell;
 
 /// Digital signal transformer.
 pub trait SignalProcessor {

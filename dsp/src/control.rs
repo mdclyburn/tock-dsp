@@ -15,9 +15,15 @@ pub enum Command {
 pub trait ControllerMailbox {
     fn suspend(&self) -> Result<(), ()>;
 
+    fn suspend_complete(&self);
+
     fn resume(&self) -> Result<(), ()>;
 
-    fn current_state(&self) -> Result<State, ()>;
+    fn resume_complete(&self);
+
+    fn current_state(&self) -> Result<(), ()>;
+
+    fn current_state_complete(&self, state: State);
 }
 
 pub trait CommandMailbox {

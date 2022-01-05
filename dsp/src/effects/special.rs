@@ -4,7 +4,7 @@ Effects useful for purposes outside of typical audio signal processing are here.
 These processors are oriented toward assisting with debugging and testing.
  */
 
-use kernel::dsp::link::SignalProcessor;
+use crate::signal::SignalProcessor;
 
 /// Copy samples from the input buffer to the output buffer without additional processing.
 ///
