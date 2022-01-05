@@ -102,7 +102,6 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
     ///
     /// Performs initial configuration and starts the DSP loop.
     /// Once configured, the DSP side of the kernel will respond to a short list of interrupts:
-    /// SIO, for interprocessor messaging;
     /// DMA, for sample processing and output.
     pub fn run<'a, C: Chip>(
         &'static self,
