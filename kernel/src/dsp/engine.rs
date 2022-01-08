@@ -5,6 +5,7 @@ use core::iter::{Cycle, Iterator, Peekable};
 use core::slice::{self, Iter as SliceIter};
 
 use dsp;
+use dsp::control::CommandReceiver;
 use dsp::signal::Chain;
 
 use crate::config;
@@ -40,6 +41,8 @@ type CyclicContainerIter = Peekable<Cycle<SliceIter<'static, SampleContainer>>>;
 /// This is the heart of the DSP.
 /// Start signal processing with [`DSPEngine::run()`].
 pub struct DSPEngine<F: 'static + time::Frequency, T: 'static + time::Ticks> {
+    /// Mailbox for receiving commands.
+    command: &'static dyn CommandReceiver,
     /// Runtime statistics.
     stats: Mutex<Statistics>,
     /// Time provider.
@@ -66,11 +69,13 @@ pub struct DSPEngine<F: 'static + time::Frequency, T: 'static + time::Ticks> {
 impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
     /// Create a new `DSPEngine` instance.
     pub unsafe fn new<'a>(
+        command: &'static dyn CommandReceiver,
         stats: Mutex<Statistics>,
         time: &'static dyn time::Time<Frequency = F, Ticks = T>,
     ) -> DSPEngine<F, T>
     {
         DSPEngine {
+            command,
             stats,
             time,
             in_containers: [SampleContainer::new(static_buf!([usize; config::NO_BUFFER_ENTRIES]).initialize([0; config::NO_BUFFER_ENTRIES])),
@@ -132,6 +137,13 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             link_count & 1 == 0
         };
         loop {
+            // Query for a command to process.
+            if let Some(command) = self.command.next_pending() {
+                match command {
+                    _ => unimplemented!()
+                }
+            }
+
             // Obtain the next container of unprocessed sequence of audio samples.
             // Obtain the next container of free output buffer for processed samples.
             // .unwrap(): these are cyclic iterators of slices.

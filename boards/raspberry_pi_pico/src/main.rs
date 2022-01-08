@@ -537,9 +537,12 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
         .finalize(components::rr_component_helper!(NUM_PROCS));
 
-    let dsp = static_init!(
-        capsules::dsp::DSPControl,
-        capsules::dsp::DSPControl::new());
+    // DSP controller.
+    let dsp = {
+        let ctrl = aspk::cnc::FIFOController::new(&peripherals.fifo);
+        static_init!(capsules::dsp::DSPControl,
+                     capsules::dsp::DSPControl::new(ctrl))
+    };
 
     let raspberry_pi_pico = RaspberryPiPico {
         ipc: kernel::ipc::IPC::new(

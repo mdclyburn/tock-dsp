@@ -14,6 +14,7 @@ use rp2040::pio::{self, PIO, PIOBlock};
 
 use crate::{RP2040Chip, RaspberryPiPico};
 use crate::aspk::interrupt;
+use crate::aspk::cnc::FIFOCommandReceiver;
 
 /// DSP implemented with an ADC channel and a PIO block implementing I²S.
 struct ADCToI2S {
@@ -67,12 +68,17 @@ pub unsafe fn launch() -> ! {
         "pop {{r0, r1}}",
     );
 
+    // Start with clearing and disabling all interrupts.
     rp2040::init();
 
     // The first three words from the other side are the kernel, board, and chip resources.
     let sio = SIO::new();
     let (_kernel, board_resources, chip_resources) = receive_resources(&sio);
 
+    // Create the command receiver built on the FIFO.
+    let cmd_recv = FIFOCommandReceiver::new(board_resources.fifo);
+
+    // Grab an alarm for timing things.
     let alarm = board_resources.timer.allocate_alarm().unwrap();
 
     // Complete interrupt configuration.
@@ -97,7 +103,7 @@ pub unsafe fn launch() -> ! {
     // DSP engine
     let engine = static_init!(
         DSPEngine<time::Freq1MHz, time::Ticks32>,
-        DSPEngine::new(mtx_stats, board_resources.timer));
+        DSPEngine::new(cmd_recv, mtx_stats, board_resources.timer));
 
     // Signal chain
     let signal_chain = Chain::new(&[

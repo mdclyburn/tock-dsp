@@ -4,19 +4,21 @@ use kernel::debug;
 use kernel::hil;
 use kernel::utilities::cells::OptionalCell;
 
+use crate::chip::Processor;
 use crate::gpio::SIO;
 
 /// RP2040 interprocessor FIFO.
 pub struct FIFO {
     sio: SIO,
-    client: OptionalCell<&'static dyn hil::fifo::FIFOClient<Publisher = Self>>,
+    client: (OptionalCell<&'static dyn hil::fifo::FIFOClient<Publisher = Self>>,
+             OptionalCell<&'static dyn hil::fifo::FIFOClient<Publisher = Self>>),
 }
 
 impl FIFO {
     pub const fn new() -> FIFO {
         FIFO {
             sio: SIO::new(),
-            client: OptionalCell::empty(),
+            client: (OptionalCell::empty(), OptionalCell::empty()),
         }
     }
 
@@ -32,7 +34,12 @@ impl FIFO {
                    });
             self.clear_error();
         } else {
-            if let Some(fifo_client) = self.client.extract() {
+            let client = match self.sio.get_processor() {
+                Processor::Processor0 => self.client.0.extract(),
+                Processor::Processor1 => self.client.1.extract(),
+            };
+
+            if let Some(fifo_client) = client {
                 while self.sio.fifo_valid() {
                     let data = self.sio.read_fifo();
                     fifo_client.data_received(data);
@@ -78,6 +85,9 @@ impl hil::fifo::FIFO for FIFO {
     }
 
     fn set_client(&self, client: &'static dyn hil::fifo::FIFOClient<Publisher = Self>) {
-        self.client.set(client)
+        match self.sio.get_processor() {
+            Processor::Processor0 => &self.client.0.set(client),
+            Processor::Processor1 => &self.client.1.set(client),
+        };
     }
 }

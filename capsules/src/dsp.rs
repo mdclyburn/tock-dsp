@@ -1,5 +1,6 @@
 //! Digital signal processing control interface.
 
+use dsp::control::Controller;
 use kernel::dsp::engine::Statistics;
 use kernel::errorcode::ErrorCode;
 use kernel::process::ProcessId;
@@ -10,12 +11,14 @@ use kernel::utilities::cells::MapCell;
 pub const DRIVER_NUM: usize = crate::driver::NUM::DSPControl as usize;
 
 pub struct DSPControl {
+    controller: &'static dyn Controller,
     stats: MapCell<Mutex<Statistics>>,
 }
 
 impl DSPControl {
-    pub fn new() -> DSPControl {
+    pub fn new(controller: &'static dyn Controller) -> DSPControl {
         DSPControl {
+            controller,
             stats: MapCell::empty(),
         }
     }

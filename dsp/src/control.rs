@@ -1,3 +1,5 @@
+//! Controller-DSP engine communication.
+
 #[derive(Copy, Clone)]
 pub enum State {
     Running,
@@ -12,20 +14,21 @@ pub enum Command {
     Resume,
 }
 
-pub trait ControllerMailbox {
-    fn suspend(&self) -> Result<(), ()>;
-
-    fn suspend_complete(&self);
-
-    fn resume(&self) -> Result<(), ()>;
-
-    fn resume_complete(&self);
-
-    fn current_state(&self) -> Result<(), ()>;
-
-    fn current_state_complete(&self, state: State);
+pub enum Response {
+    Acknowledge,
+    CurrentState(State),
 }
 
-pub trait CommandMailbox {
+pub trait Controller {
+    fn suspend(&self);
+
+    fn resume(&self);
+
+    fn current_state(&self);
+
+    fn response_received(&self, response: Response);
+}
+
+pub trait CommandReceiver {
     fn next_pending(&self) -> Option<Command>;
 }

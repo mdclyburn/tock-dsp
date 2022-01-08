@@ -1,3 +1,4 @@
+pub(crate) mod cnc;
 mod interrupt;
 mod startup;
 

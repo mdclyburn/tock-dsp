@@ -1,3 +1,5 @@
+//! Compile-time configuration parameters.
+
 /// Sample size in bits.
 const SAMPLE_SIZE: usize = 16;
 /// Number of samples collect in one second.
