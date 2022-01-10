@@ -107,8 +107,8 @@ pub unsafe fn launch() -> ! {
 
     // Signal chain
     let signal_chain = Chain::new(&[
-        // create_link!(effects::special::NoOp, effects::special::NoOp::new()),
-        create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
+        create_link!(effects::special::NoOp, effects::special::NoOp::new()),
+        // create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
     ]);
 
     // Set up DSP source and sink backing producer and consumers.
@@ -177,18 +177,18 @@ fn configure_pio(pio: &'static PIO) -> &'static PIOBlock {
 
     .wrap_target
 left_ch:
-    set x, 15 side 0b01                           ; Set up counter. Cue on BCLK (LSB of right channel).
+    set pins, 0 side 0b00                         ; Output known low value. Clock low for empty bit.
+    set x, 16 side 0b01                           ; Set up counter. Cue on BCLK.
 left_ch_loop:
-    out pins, 1 side 0b00                         ; Write left channel bit.
-    jmp x-- left_ch_loop side 0b01                ; Repeat for the first 15 bits. Cue on BCLK.
-    out pins, 1 side 0b10                         ; Write last bit. Goes with the right channel's LRCLK.
+    out pins, 1 side 0b00                         ; Write the left channel bit.
+    jmp x-- left_ch_loop side 0b01                ; Repeat to output 16 bits. Cue on BCLK.
 
 right_ch:
-    set x, 15 side 0b11                           ; Set up counter. Cue on BCLK (LSB of left channel).
+    set pins, 0 side 0b10                         ; Output known low value. Clock low for empty bit.
+    set x, 16 side 0b11                           ; Set up counter. Cue on BCLK.
 right_ch_loop:
-    set pins, 0 side 0b10                         ; Write empty right channel.
-    jmp x--, right_ch_loop side 0b11              ; Repeat for the first 15 bits. Cue on BCLK.
-    set pins, 0 side 0b00                         ; Write last bit. Goes with the left channel's LRCLK.
+    set pins, 1 side 0b10                         ; Write empty right channel.
+    jmp x--, right_ch_loop side 0b11              ; Repeat to output 16 bits. Cue on BCLK.
     .wrap
 ");
 
@@ -211,7 +211,7 @@ right_ch_loop:
     // Fractional divider (8-bit) = .144274376 * 256
     //   = 36.934240256 ≅ 37
     let (div_int, div_frac) = {
-        let req_bandwidth = 32 * 2 * dsp::config::sampling_rate();
+        let req_bandwidth = ((16 + 1) * 2) * 2 * dsp::config::sampling_rate();
         let clk_ticks_per = 125_000_000f32 / req_bandwidth as f32;
 
         let frac = (clk_ticks_per - (clk_ticks_per as u32 as f32)) * 256f32;
@@ -235,9 +235,9 @@ right_ch_loop:
             wrap_top: i2s_pio.program.wrap.source,
             wrap_bottom: i2s_pio.program.wrap.target,
             autopull: pio::Autoshift::On(16),
-            out_base_pin: 16,
-            set_base_pin: 16,
-            side_set_base_pin: 17,
+            out_base_pin: 15,
+            set_base_pin: 15,
+            side_set_base_pin: 16,
             side_set_count: 2,
             initial_pindir: 0b00001,
             fifo_allocation: pio::FIFOAllocation::Transmit,
