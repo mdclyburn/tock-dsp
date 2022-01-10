@@ -59,6 +59,9 @@ pub unsafe fn configure(board_resources: &'static RaspberryPiPico,
         }
     }
     IRQS[alarm.interrupt_no() as usize] = alarm_interrupt_handler as usize;
+
+    // Enable interrupts for those needing it explicitly.
+    board_resources.fifo.enable_interrupt();
 }
 
 /// "Handler" for interrupts that are not being explicitly handled by ASPK.

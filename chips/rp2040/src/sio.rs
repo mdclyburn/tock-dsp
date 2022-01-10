@@ -1,11 +1,13 @@
 //! Single-cycle I/O  hardware.
 
+use cortexm0p::nvic::Nvic;
 use kernel::debug;
 use kernel::hil;
 use kernel::utilities::cells::OptionalCell;
 
 use crate::chip::Processor;
 use crate::gpio::SIO;
+use crate::interrupts;
 
 /// RP2040 interprocessor FIFO.
 pub struct FIFO {
@@ -20,6 +22,15 @@ impl FIFO {
             sio: SIO::new(),
             client: (OptionalCell::empty(), OptionalCell::empty()),
         }
+    }
+
+    pub fn enable_interrupt(&self) {
+        let index = match self.sio.get_processor() {
+            Processor::Processor0 => interrupts::SIO_IRQ_PROC0,
+            Processor::Processor1 => interrupts::SIO_IRQ_PROC1,
+        };
+
+        unsafe { Nvic::new(index) }.enable();
     }
 
     pub fn handle_interrupt(&self) {
