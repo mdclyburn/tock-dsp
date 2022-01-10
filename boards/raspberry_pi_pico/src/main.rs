@@ -419,7 +419,7 @@ pub unsafe fn main() {
     components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
     // Configure I/O for DSP.
-    for pin_id in [RPGpio::GPIO16, RPGpio::GPIO17, RPGpio::GPIO18] {
+    for pin_id in [RPGpio::GPIO15, RPGpio::GPIO16, RPGpio::GPIO17] {
         let pin = peripherals.pins.get_pin(pin_id);
         pin.set_function(GpioFunction::PIO0);
     }
@@ -454,8 +454,8 @@ pub unsafe fn main() {
             10 => &peripherals.pins.get_pin(RPGpio::GPIO10),
             11 => &peripherals.pins.get_pin(RPGpio::GPIO11),
             12 => &peripherals.pins.get_pin(RPGpio::GPIO12),
-            13 => &peripherals.pins.get_pin(RPGpio::GPIO13),
-            14 => &peripherals.pins.get_pin(RPGpio::GPIO14),
+            // 13 => &peripherals.pins.get_pin(RPGpio::GPIO13),
+            // 14 => &peripherals.pins.get_pin(RPGpio::GPIO14),
             // 15 => &peripherals.pins.get_pin(RPGpio::GPIO15),
             // 16 => &peripherals.pins.get_pin(RPGpio::GPIO16),
             // 17 => &peripherals.pins.get_pin(RPGpio::GPIO17),
@@ -540,8 +540,14 @@ pub unsafe fn main() {
     // DSP controller.
     let dsp = {
         let ctrl = aspk::cnc::FIFOController::new(&peripherals.fifo);
-        static_init!(capsules::dsp::DSPControl,
-                     capsules::dsp::DSPControl::new(ctrl))
+        let dsp_control: &'static capsules::dsp::DSPControl =
+            static_init!(capsules::dsp::DSPControl,
+                         capsules::dsp::DSPControl::new(ctrl));
+
+        use dsp::control::Controller;
+        ctrl.set_receiver(dsp_control);
+
+        dsp_control
     };
 
     let raspberry_pi_pico = RaspberryPiPico {

@@ -107,8 +107,8 @@ pub unsafe fn launch() -> ! {
 
     // Signal chain
     let signal_chain = Chain::new(&[
-        create_link!(effects::special::NoOp, effects::special::NoOp::new()),
-        // create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
+        // create_link!(effects::special::NoOp, effects::special::NoOp::new()),
+        create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
     ]);
 
     // Set up DSP source and sink backing producer and consumers.
@@ -211,7 +211,10 @@ right_ch_loop:
     // Fractional divider (8-bit) = .144274376 * 256
     //   = 36.934240256 ≅ 37
     let (div_int, div_frac) = {
-        let req_bandwidth = ((16 + 1) * 2) * 2 * dsp::config::sampling_rate();
+        let req_bandwidth =
+            // (don't-care bit + 16 bits per channel) * no. channels * cycles per sample
+            ((1 + 16) * 2) * 2
+            * dsp::config::sampling_rate();
         let clk_ticks_per = 125_000_000f32 / req_bandwidth as f32;
 
         let frac = (clk_ticks_per - (clk_ticks_per as u32 as f32)) * 256f32;
