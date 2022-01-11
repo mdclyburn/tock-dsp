@@ -107,8 +107,8 @@ pub unsafe fn launch() -> ! {
 
     // Signal chain
     let signal_chain = Chain::new(&[
-        // create_link!(effects::special::NoOp, effects::special::NoOp::new()),
-        create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
+        create_link!(effects::special::NoOp, effects::special::NoOp::new()),
+        // create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
     ]);
 
     // Set up DSP source and sink backing producer and consumers.
@@ -178,16 +178,16 @@ fn configure_pio(pio: &'static PIO) -> &'static PIOBlock {
     .wrap_target
 left_ch:
     set pins, 0 side 0b00                         ; Output known low value. Clock low for empty bit.
-    set x, 16 side 0b01                           ; Set up counter. Cue on BCLK.
+    set x, 15 side 0b01                           ; Set up counter. Cue on BCLK.
 left_ch_loop:
     out pins, 1 side 0b00                         ; Write the left channel bit.
     jmp x-- left_ch_loop side 0b01                ; Repeat to output 16 bits. Cue on BCLK.
 
 right_ch:
     set pins, 0 side 0b10                         ; Output known low value. Clock low for empty bit.
-    set x, 16 side 0b11                           ; Set up counter. Cue on BCLK.
+    set x, 15 side 0b11                           ; Set up counter. Cue on BCLK.
 right_ch_loop:
-    set pins, 1 side 0b10                         ; Write empty right channel.
+    set pins, 0 side 0b10                         ; Write empty right channel.
     jmp x--, right_ch_loop side 0b11              ; Repeat to output 16 bits. Cue on BCLK.
     .wrap
 ");
