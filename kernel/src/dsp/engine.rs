@@ -217,7 +217,7 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
                 // Scale the sample up to a 16-bit value.
                 // u12::MAX << 4 = 65,520 cannot exceed u16::MAX, so there's no worry about overflow.
                 let usample16 = *usample << 4;
-                *isample = if usample16 >= i16::MAX as u16 {
+                *isample = if usample16 > i16::MAX as u16 {
                     (usample16 - (i16::MAX as u16)) as i16
                 } else {
                     i16::MIN + (usample16 as i16)
