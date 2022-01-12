@@ -394,9 +394,13 @@ impl<F: time::Frequency, T: time::Ticks> dma::DMAClient for DSPEngine<F, T> {
     }
 }
 
+/// Signal processing runtime statistics.
 #[derive(Default)]
 pub struct Statistics {
+    /// Length of time that passes while the system collects samples.
     pub collect_process_us: u32,
+    /// Length of time the system spends processing a single buffer of samples.
     pub processing_loop_us: u32,
+    /// Length of time that passes while the system plays samples.
     pub playback_time_us: u32,
 }
