@@ -107,8 +107,8 @@ pub unsafe fn launch() -> ! {
 
     // Signal chain
     let signal_chain = Chain::new(&[
-        create_link!(effects::special::NoOp, effects::special::NoOp::new()),
-        // create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 750)),
+        // create_link!(effects::special::NoOp, effects::special::NoOp::new()),
+        create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 5000)),
     ]);
 
     // Set up DSP source and sink backing producer and consumers.

@@ -61,8 +61,8 @@ impl Flange {
             config::sampling_rate()
             * max_offset_us / 1_000_000;
         let stride =
-            config::buffer_len_samples() * 2 // Samples in one cycle.
-            / (cycle_len_ms / config::buffer_len_ms()); // No. of times process() executes in cycle_len_ms.
+            config::buffer_len_samples() * 2 // No. of samples the processor will advance over in one flanging cycle.
+            / (cycle_len_ms / config::buffer_len_ms()); // No. of times process() will execute in a cycle_len_ms period.
 
         Flange {
             cycle: Cell::new(Sweep::Left(0)),
