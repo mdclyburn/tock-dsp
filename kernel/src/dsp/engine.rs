@@ -31,6 +31,9 @@ pub trait ProcessControl {
 
     /// Stop the sample sourcing and sinking processes.
     fn stop(&self) -> Result<(), ErrorCode>;
+
+    /// Perform device-specific sample pre-processing.
+    fn preprocess(&self, samples: &mut [usize]);
 }
 
 /// Iterator to cycle over buffer containers endlessly.
@@ -191,43 +194,14 @@ impl<F: time::Frequency, T: time::Ticks> DSPEngine<F, T> {
             // Start timing the processing loop.
             let t_processing_loop_start = self.time.now();
 
-            // let source_buffer_addr = proc_buf_a.as_ptr() as usize;
-            // debug!("Engine processing: {:#010X}", source_buffer_addr);
-
-            // Make it possible to see a signed representation of the buffers:
-            // from [usize] to [i16] for processing and output.
-            // Since we perform half-word transfers during the DMA, each usize is actually two samples.
-            // The lower two bytes are the first sample, the upper two bytes are the second sample.
-            //
-            // This means that we end up double-aliasing the buffers here.
-            // We continue to keep both representations around because
-            // the links get the signed numbers, and the usize buffer is what we .put() back.
-            let (sproc_buf_a, sproc_buf_b, uproc_buf_a, _uproc_buf_b) = unsafe {
-                (slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut i16, config::NO_BUFFER_ENTRIES * 2),
-                 slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut i16, config::NO_BUFFER_ENTRIES * 2),
-                 slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES * 2),
-                 slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut u16, config::NO_BUFFER_ENTRIES * 2))
+            let (uproc_buf_a, sproc_buf_a, sproc_buf_b) = unsafe {
+                (slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut u16, dsp::config::buffer_len_samples()),
+                 slice::from_raw_parts_mut(proc_buf_a.as_mut_ptr() as *mut i16, dsp::config::buffer_len_samples()),
+                 slice::from_raw_parts_mut(proc_buf_b.as_mut_ptr() as *mut i16, dsp::config::buffer_len_samples()))
             };
 
-            // Scale (12- to 16-bit), translate the samples toward the baseline.
-            // Perhaps dynamically learn what the baseline should be later.
-            // TODO: this code should be wrapped up in the sample provider.
-            // let raw = proc_buf_a[1];
-            for (usample, isample) in uproc_buf_a.iter_mut().zip(sproc_buf_a.iter_mut()) {
-                // Scale the sample up to a 16-bit value.
-                // u12::MAX << 4 = 65,520 cannot exceed u16::MAX, so there's no worry about overflow.
-                let usample16 = *usample << 4;
-                *isample = if usample16 > i16::MAX as u16 {
-                    (usample16 - (i16::MAX as u16)) as i16
-                } else {
-                    i16::MIN + (usample16 as i16)
-                };
-            }
-
-            // self.stats.try_map(|stats| {
-            //     debug!("ct: {}μs", stats.collect_process_us);
-            // });
-            // debug!("s: {} → {}", (raw & 0b111111111111) << 4, sproc_buf_a[1]);
+            // Allow engine process control to pre-process incoming samples.
+            control.preprocess(proc_buf_a);
 
             // Iterate through all links in the chain and run their processors.
             // Input samples buffer → signal processor → output samples buffer.

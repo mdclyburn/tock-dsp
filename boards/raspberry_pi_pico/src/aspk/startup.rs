@@ -1,3 +1,5 @@
+use core::slice;
+
 use kernel::static_init;
 use kernel::Kernel;
 use kernel::dsp::engine::{self, DSPEngine, ProcessControl};
@@ -6,6 +8,7 @@ use kernel::hil;
 use kernel::hil::time;
 use kernel::sync::Mutex;
 
+use dsp;
 use dsp::signal::{Chain, Link};
 use dsp::effects;
 use rp2040;
@@ -24,6 +27,28 @@ struct ADCToI2S {
     i2s_pio_dma: &'static dyn hil::dma::DMAChannel,
 }
 
+impl ADCToI2S {
+    fn shift_scale16(usamples: &[u16], isamples: &mut [i16]) {
+        // Scale (12- to 16-bit), translate the samples toward the baseline.
+        for (usample, isample) in usamples.iter().zip(isamples.iter_mut()) {
+            // Scale the sample up to a 16-bit value.
+            // u12::MAX << 4 = 65,520 cannot exceed u16::MAX, so there's no worry about overflow.
+            let usample16 = *usample << 4;
+            *isample = if usample16 > i16::MAX as u16 {
+                (usample16 - (i16::MAX as u16)) as i16
+            } else {
+                i16::MIN + (usample16 as i16)
+            };
+        }
+    }
+
+    fn shift_16(usamples: &[u16], isamples: &mut [i16]) {
+        for (usample, isample) in usamples.iter().zip(isamples.iter_mut()) {
+            *isample = -2048 + (*usample as i16);
+        }
+    }
+}
+
 impl ProcessControl for ADCToI2S {
     fn source_dma_channel(&self) -> &'static dyn hil::dma::DMAChannel {
         self.adc_dma
@@ -39,6 +64,24 @@ impl ProcessControl for ADCToI2S {
 
     fn stop(&self) -> Result<(), ErrorCode> {
         Err(ErrorCode::NOSUPPORT)
+    }
+
+    fn preprocess(&self, samples: &mut [usize]) {
+        // Make it possible to see a signed representation of the buffers:
+        // from [usize] to [i16] for processing and output.
+        // Since we perform half-word transfers during the DMA, each usize is actually two samples.
+        // The lower two bytes are the first sample, the upper two bytes are the second sample.
+        //
+        // This means that we end up double-aliasing the buffers here.
+        // We continue to keep both representations around because
+        // the links get the signed numbers, and the usize buffer is what we .put() back.
+        let (usamples, isamples) = unsafe {
+            (slice::from_raw_parts_mut(samples.as_mut_ptr() as *mut u16, dsp::config::buffer_len_samples()),
+             slice::from_raw_parts_mut(samples.as_mut_ptr() as *mut i16, dsp::config::buffer_len_samples()))
+        };
+
+        Self::shift_scale16(usamples, isamples);
+        // Self::shift_16(&*usamples, isamples);
     }
 }
 
