@@ -317,6 +317,8 @@ pub struct Parameters {
 
     /// Initial pin direction configuration; a bit set means the pin is initially an output.
     pub initial_pindir: u8,
+    /// Address (index) of the first instruction the state machine will execute.
+    pub entry: u8,
 }
 
 impl Default for Parameters {
@@ -350,6 +352,7 @@ impl Default for Parameters {
             set_base_pin: 0,
             out_base_pin: 0,
             initial_pindir: 0b00000,
+            entry: 0,
         }
     }
 }
@@ -415,6 +418,8 @@ pub trait PIOBlockClient {
     fn interrupt_raised(&self, pio_block: &PIOBlock);
 }
 
+/// BINARY-encoded JMP.
+const ENC_INSTR_JMP: u16 = 0b000_00000_000_00000;
 /// Binary-encoded SET.
 const ENC_INSTR_SET: u16 = 0b111_00000_000_00000;
 
@@ -516,6 +521,13 @@ impl PIOBlock {
                     | 0b000_00000_100_00000 // Set PINDIRS.
                     | params.initial_pindir as u16;
                 self.registers.sm_ctrl[sm_no].instr.set(set_pindirs_instr as u32);
+
+                // Set the instruction address of the state machine if it is not 0.
+                // This allows state machines in the same PIO block to execute different code.
+                let jmp_initial_instr =
+                    ENC_INSTR_JMP
+                    | params.entry as u16;
+                self.registers.sm_ctrl[sm_no].instr.set(jmp_initial_instr as u32);
 
                 // Start the state machine.
                 enabled_machines |= 1 << 3;
