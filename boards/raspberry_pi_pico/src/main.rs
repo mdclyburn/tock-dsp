@@ -419,7 +419,7 @@ pub unsafe fn main() {
     components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
     // Configure I/O for DSP.
-    for pin_id in [RPGpio::GPIO15, RPGpio::GPIO16, RPGpio::GPIO17] {
+    for pin_id in [RPGpio::GPIO14, RPGpio::GPIO15, RPGpio::GPIO16, RPGpio::GPIO17] {
         let pin = peripherals.pins.get_pin(pin_id);
         pin.set_function(GpioFunction::PIO0);
     }

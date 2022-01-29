@@ -1,0 +1,40 @@
+;;; -*- mode: asm -*-
+;;;
+;;; Single-channel I²S for PCM177x
+;;;
+;;; Drive a mono audio signal through the I²S left channel.
+;;; This version clocks out one bit before the MSB of each channel.
+;;; It takes two cycles to output one bit of a word.
+;;;
+;;; A second PIO state machine drives the system clock input to the PCM177x.
+;;; SCKI must run x128, x192, x256, or x384 faster than the sample frequency.
+;;; The PIO ASM for SCKI will already run x2 faster than the I²S logic.
+;;;
+
+    .program i2s_pcm1770
+
+    ;; bit 0 = BCLK, bit 1 = LRCLK
+    .side_set 2
+
+;;; I²S hardware logic (instructions 0 to 7)
+left_ch:
+    set pins, 0 side 0b00                         ; Output known low value. Clock low for empty bit.
+    set x, 15 side 0b01                           ; Set up counter. Cue on BCLK.
+left_ch_loop:
+    out pins, 1 side 0b00                         ; Write the left channel bit.
+    jmp x-- left_ch_loop side 0b01                ; Repeat to output 16 bits. Cue on BCLK.
+
+right_ch:
+    set pins, 0 side 0b10                         ; Output known low value. Clock low for empty bit.
+    set x, 15 side 0b11                           ; Set up counter. Cue on BCLK.
+right_ch_loop:
+    set pins, 1 side 0b10                         ; Write empty right channel.
+    jmp x--, right_ch_loop side 0b11              ; Repeat to output 16 bits. Cue on BCLK.
+
+;;; PCM177x SCKI (instructions 8 to 9)
+;;;
+;;; Configuration:
+;;; Assign a set pin for the clock output signal.
+scki_loop:
+    set pins, 0 side 0b00                        ; Output clock high signal.
+    set pins, 1 side 0b00                        ; Output clock low signal.

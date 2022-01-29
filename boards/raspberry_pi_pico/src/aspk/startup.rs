@@ -150,8 +150,9 @@ pub unsafe fn launch() -> ! {
 
     // Signal chain
     let signal_chain = Chain::new(&[
-        // create_link!(effects::special::NoOp, effects::special::NoOp::new()),
-        create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 5000)),
+        // create_link!(effects::special::Zero, effects::special::Zero::new()),
+        create_link!(effects::special::NoOp, effects::special::NoOp::new()),
+        // create_link!(effects::delay::Flange, effects::delay::Flange::new(10_000, 5000)),
     ]);
 
     // Set up DSP source and sink backing producer and consumers.
@@ -160,7 +161,7 @@ pub unsafe fn launch() -> ! {
     board_resources.adc.configure_continuous_dma(
         rp2040::adc::Channel::Channel0,
         dsp::config::sampling_rate() as u32);
-    let i2s_pio = configure_pio(board_resources.pio);
+    let i2s_pio = configure_pio_pcm177x(board_resources.pio);
 
     let dsp_process_ctrl = {
         let source_channel = board_resources.dma.configure(&hil::dma::Parameters {
@@ -213,7 +214,7 @@ fn receive_resources(sio: &SIO) -> (&'static Kernel,
 }
 
 #[inline(never)]
-fn configure_pio(pio: &'static PIO) -> &'static PIOBlock {
+fn configure_pio_uda1334(pio: &'static PIO) -> &'static PIOBlock {
     let i2s_pio = pio_proc::pio!(32, "
     ;; bit 0 = BCLK, bit 1 = LRCLK
     .side_set 2
@@ -255,7 +256,7 @@ right_ch_loop:
     //   = 36.934240256 ≅ 37
     let (div_int, div_frac) = {
         let req_bandwidth =
-            // (don't-care bit + 16 bits per channel) * no. channels * cycles per sample
+            // (don't-care bit + N bits per channel) * no. channels * cycles per sample
             ((1 + 16) * 2) * 2
             * dsp::config::sampling_rate();
         let clk_ticks_per = 125_000_000f32 / req_bandwidth as f32;
@@ -269,9 +270,8 @@ right_ch_loop:
 
         (clk_ticks_per as u16, frac)
     };
-
     let parameters = {
-    let default = pio::Parameters::default();
+        let default = pio::Parameters::default();
         pio::Parameters {
             clock_divider: (div_int, div_frac),
             osr_direction: pio::ShiftDirection::Left,
@@ -295,6 +295,126 @@ right_ch_loop:
         &i2s_pio.program.code,
         &[Some(&parameters), None, None, None],
         &[pio::Interrupt::ReceiveNotEmpty(pio::StateMachine::SM0)],
+        pio::InterruptLine::IRQ0)
+        .unwrap()
+}
+
+#[inline(never)]
+fn configure_pio_pcm177x(pio: &'static PIO) -> &'static PIOBlock {
+    let i2s_pio = pio_proc::pio!(32,"
+    .side_set 2
+
+;;; I²S hardware logic (instructions 0 to 7)
+left_ch:
+    set pins, 0 side 0b00                         ; Output known low value. Clock low for empty bit.
+    set x, 15 side 0b01                           ; Set up counter. Cue on BCLK.
+left_ch_loop:
+    out pins, 1 side 0b00                         ; Write the left channel bit.
+    jmp x-- left_ch_loop side 0b01                ; Repeat to output 16 bits. Cue on BCLK.
+
+right_ch:
+    set pins, 0 side 0b10                         ; Output known low value. Clock low for empty bit.
+    set x, 15 side 0b11                           ; Set up counter. Cue on BCLK.
+right_ch_loop:
+    set pins, 1 side 0b10                         ; Write empty right channel.
+    jmp x--, right_ch_loop side 0b11              ; Repeat to output 16 bits. Cue on BCLK.
+
+;;; PCM177x SCKI (instructions 8 to 9)
+;;;
+;;; Configuration:
+;;; Assign a set pin for the clock output signal.
+scki_loop:
+    set pins, 0 side 0b00                        ; Output clock high signal.
+    set pins, 1 side 0b00                        ; Output clock low signal.
+");
+
+    // Clock divider values.
+    // See `configure_pio_uda1334()` for the explanation.
+    let (bclk_div_int, bclk_div_frac, scki_div_int, scki_div_frac) = {
+        // Assuming a 125MHz source clock.
+        let clock_freq = 125_000_000f32;
+        let req_bandwidth =
+            // (don't-care bit + N bits per channel) * no. channels * cycles per sample
+            ((1 + 16) * 2) * 2
+            * dsp::config::sampling_rate();
+        // Calculate a more precise, floating-point divider value.
+        let clk_ticks_per = clock_freq / req_bandwidth as f32;
+
+        // Get the decimal part of the FP divider value.
+        // Using the corresponding f32 function is not possible, for some reason.
+        let frac = (clk_ticks_per - (clk_ticks_per as u32 as f32)) * 256f32;
+        // ...and round it.
+        let frac = if frac - (frac as u32 as f32) >= 0.5 {
+            frac + 1.0
+        } else {
+            frac
+        } as u8;
+
+        let bclk_div_int = clk_ticks_per as u16;
+        let bclk_div_frac = frac;
+
+        // Calculate the SCKI from the BCLK FP divider value.
+        // We choose an SCKI of x128 faster than the sampling frequency.
+        let scki_div = clock_freq
+            // sampling freq. * 2 cycles per rising edge * rate factor
+            / ((dsp::config::sampling_rate() * 2 * 128) as f32);
+
+        let scki_div_int = scki_div as u16;
+
+        let scki_div_frac = (scki_div - (scki_div as u32 as f32)) * 256f32;
+        let scki_div_frac = if scki_div - (scki_div as u32 as f32) >= 0.5 {
+            scki_div_frac + 1.0
+        } else {
+            scki_div_frac
+        } as u8;
+
+        kernel::debug!("BCLK divider: {}, {}", bclk_div_int, bclk_div_frac);
+        kernel::debug!("SCKI divider: {}, {}", scki_div_int, scki_div_frac);
+
+        (bclk_div_int, bclk_div_frac, scki_div_int, scki_div_frac)
+    };
+
+    let (sm0_params, sm1_params) = {
+        let default = pio::Parameters::default();
+
+        (
+            // State machine 0: I²S logic
+            pio::Parameters {
+                clock_divider: (bclk_div_int, bclk_div_frac),
+                osr_direction: pio::ShiftDirection::Left,
+                set_count: 1,
+                out_count: 1,
+                out_sticky: true,
+                wrap_top: 7,
+                wrap_bottom: 0,
+                autopull: pio::Autoshift::On(16),
+                out_base_pin: 15,
+                set_base_pin: 15,
+                side_set_base_pin: 16,
+                side_set_count: 2,
+                initial_pindir: 0b00001,
+                fifo_allocation: pio::FIFOAllocation::Transmit,
+                ..default
+            },
+
+            // State machine 1: SCKI
+            pio::Parameters {
+                clock_divider: (scki_div_int, scki_div_frac),
+                set_count: 1,
+                out_sticky: true,
+                wrap_top: 9,
+                wrap_bottom: 8,
+                set_base_pin: 14,
+                initial_pindir: 0b1,
+                ..default
+            },
+        )
+    };
+
+    pio.configure(
+        &i2s_pio.program.code,
+        &[Some(&sm0_params), Some(&sm1_params), None, None],
+        &[],
         pio::InterruptLine::IRQ0)
         .unwrap()
 }
