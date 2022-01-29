@@ -26,3 +26,23 @@ impl SignalProcessor for NoOp {
         }
     }
 }
+
+/// Set all samples to zero.
+///
+/// A special-purpose effect processor for testing when the output is unimportant
+/// or should not be visible
+/// (e.g., inspecting output from an external DAC for noise).
+pub struct Zero;
+
+impl Zero {
+    /// Create a new Zero processor.
+    pub fn new() -> Zero { Zero }
+}
+
+impl SignalProcessor for Zero {
+    fn process(&self, _in_samples: &[i16], out_samples: &mut [i16]) {
+        for x in out_samples.iter_mut() {
+            *x = 0;
+        }
+    }
+}
